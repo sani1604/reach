@@ -1,0 +1,21 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "3d494905b0473e553ab710f85dbb99a8"
+name = "Reach — OpenAI Ads Pixel"
+application_url = "https://reach.whatify.in/dashboard"
+embedded = true
+
+[webhooks]
+api_version = "2026-07"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders,read_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://reach.whatify.in/auth/callback",
+  "https://reach.whatify.in/auth/install"
+]

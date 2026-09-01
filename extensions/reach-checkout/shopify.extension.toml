@@ -3,6 +3,7 @@
 # back to the Reach pixel, so click IDs (fbc/fbp) are joined to the
 # server-side Purchase event (cross-device matching).
 name = "Reach Order Enrichment"
+uid = "56b6a3da-5cdb-7aa1-c29d-3d817fe05a0c796777f9"
 type = "checkout_ui_extension"
 
 [[extensions]]
