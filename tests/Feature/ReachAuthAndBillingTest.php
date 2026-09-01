@@ -185,7 +185,7 @@ class ReachAuthAndBillingTest extends TestCase
         $response = $this->withSession(['shopify.state' => $state, 'shopify.shop' => 'test-store.myshopify.com'])
             ->get('/auth/callback?'.$rawQuery);
 
-        $response->assertRedirect('https://test-store.myshopify.com/admin/apps/reach');
+        $response->assertRedirect('https://test-store.myshopify.com/admin/apps/reach/dashboard');
         $this->assertDatabaseHas('shops', [
             'shopify_domain' => 'test-store.myshopify.com',
             'access_token'   => 'shpca_newtoken',

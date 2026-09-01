@@ -79,8 +79,8 @@ class ShopifyAuthController extends Controller
 
         $host = $request->query('host');
         $redirectUrl = $host
-            ? 'https://'.base64_decode($host).'/apps/'.config('shopify.app_handle', 'reach')
-            : "https://{$domain}/admin/apps/".config('shopify.app_handle', 'reach');
+            ? 'https://'.base64_decode($host).'/apps/'.config('shopify.app_handle', 'reach').'/dashboard'
+            : "https://{$domain}/admin/apps/".config('shopify.app_handle', 'reach').'/dashboard';
 
         return redirect()->away($redirectUrl);
     }
