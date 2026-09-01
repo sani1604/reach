@@ -38,7 +38,6 @@
         <script>
             (function () {
                 'use strict';
-                // Degrades gracefully when App Bridge is unavailable (e.g. preview).
                 if (!window.shopify) return;
 
                 var shop = (window.shopify.shop && window.shopify.shop.replace(/^https?:\/\//, '')) || null;
@@ -51,23 +50,46 @@
                 try {
                     if (typeof window.shopify.idToken === 'function') {
                         window.shopify.idToken().then(attach).catch(function () {});
+                        setInterval(function () {
+                            window.shopify.idToken().then(attach).catch(function () {});
+                        }, 9000);
                     }
                 } catch (e) { /* noop */ }
 
-                // Attach the session token to any XHR/fetch from the embedded app.
+                // Intercept fetch
                 var origFetch = window.fetch;
                 window.fetch = function (input, init) {
                     init = init || {};
-                    if (window.__reachSessionToken) {
+                    var token = window.__reachSessionToken;
+                    if (token) {
                         if (init.headers instanceof Headers) {
-                            if (!init.headers.has('Authorization')) init.headers.set('Authorization', 'Bearer ' + window.__reachSessionToken);
+                            if (!init.headers.has('Authorization')) init.headers.set('Authorization', 'Bearer ' + token);
                         } else {
                             init.headers = init.headers || {};
-                            if (!init.headers.Authorization) init.headers.Authorization = 'Bearer ' + window.__reachSessionToken;
+                            if (!init.headers.Authorization) init.headers.Authorization = 'Bearer ' + token;
                         }
                     }
-                    return origFetch.call(this, input, init);
+                    return origFetch.call(this, input, init).then(function (response) {
+                        if (response.status === 401 && shop) {
+                            // If unauthenticated, try to refresh token or reload inside app iframe
+                            window.location.reload();
+                        }
+                        return response;
+                    });
                 };
+
+                // Intercept all link clicks and form submissions to ensure session token / shop query params are passed
+                document.addEventListener('click', function (e) {
+                    var target = e.target.closest('a');
+                    if (!target || !target.href) return;
+                    var url = new URL(target.href, window.location.origin);
+                    if (url.origin === window.location.origin && shop) {
+                        if (!url.searchParams.has('shop')) {
+                            url.searchParams.set('shop', shop);
+                            target.href = url.toString();
+                        }
+                    }
+                });
             })();
         </script>
     @endif
