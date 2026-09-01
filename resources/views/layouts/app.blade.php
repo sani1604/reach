@@ -13,9 +13,9 @@
             Reach
         </div>
         <nav class="app-nav">
-            <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Dashboard</a>
+            <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Performance</a>
             <a href="{{ route('settings') }}" class="{{ request()->routeIs('settings*') ? 'active' : '' }}">Settings</a>
-            <a href="{{ route('billing') }}" class="{{ request()->routeIs('billing*') ? 'active' : '' }}">Billing</a>
+            <a href="{{ route('setup.guide') }}" class="{{ request()->routeIs('setup.guide') ? 'active' : '' }}">Setup guide</a>
         </nav>
         <span class="plan-badge {{ ($shop->plan ?? 'free') === 'free' ? 'free' : '' }}">
             {{ ucfirst($shop->plan ?? 'Free') }} plan
