@@ -2,6 +2,6 @@
   "name": "reach-pixel-extension",
   "private": true,
   "dependencies": {
-    "@shopify/web-pixels-extension": "^0.3.0"
+    "@shopify/web-pixels-extension": "*"
   }
 }
