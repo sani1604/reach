@@ -1,0 +1,7 @@
+{
+  "name": "reach-checkout-extension",
+  "private": true,
+  "dependencies": {
+    "@shopify/checkout-ui-extensions-react": "^0.24.0"
+  }
+}
