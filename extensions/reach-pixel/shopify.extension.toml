@@ -1,0 +1,11 @@
+# Reach Pixel — web pixel extension (Customer Events).
+# Install this on the merchant's storefront; it loads the Reach tracker
+# (pixel.js) and maps Shopify standard events onto the OpenAI Ads taxonomy.
+name = "Reach Pixel"
+type = "web_pixel_extension"
+runtime_context = "strict"
+
+[settings.config]
+type = "single_line_text_field"
+label = "Reach app URL"
+help_text = "The public URL of your Reach app, e.g. https://your-app-domain.com"

@@ -1,0 +1,21 @@
+# Reach Checkout — checkout UI extension.
+# Runs on the order-status ("thank you") page and hands the confirmed order id
+# back to the Reach pixel, so click IDs (fbc/fbp) are joined to the
+# server-side Purchase event (cross-device matching).
+name = "Reach Order Enrichment"
+type = "checkout_ui_extension"
+
+[[extensions]]
+type = "checkout_ui_extension"
+name = "Reach Order Enrichment"
+handle = "reach-order-enrichment"
+description = "Joins the confirmed order to the Reach pixel for accurate attribution"
+
+[extensions.targeting]
+target = "purchase.thank-you"
+module = "./src/index.js"
+
+[extensions.capabilities]
+api_access = true
+network_access = true
+block_progress = false
