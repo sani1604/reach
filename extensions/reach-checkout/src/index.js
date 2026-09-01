@@ -1,5 +1,3 @@
-import { extension } from '@shopify/ui-extensions/checkout';
-
 /**
  * Reach Order Enrichment — checkout UI extension (purchase.thank-you target).
  *
@@ -8,8 +6,9 @@ import { extension } from '@shopify/ui-extensions/checkout';
  * This joins the order to the visitor's click IDs (fbc/fbp) so the
  * server-side Purchase event gains cross-device matching signals.
  */
-export default extension('purchase.thank-you', (root, api) => {
-  const checkout = api.checkout;
+export default function extension() {
+  const api = typeof globalThis !== 'undefined' ? globalThis.shopify : undefined;
+  const checkout = api && api.checkout;
   const orderId = checkout && checkout.order && checkout.order.id;
   const orderName = checkout && checkout.order && checkout.order.name;
 
@@ -24,5 +23,5 @@ export default extension('purchase.thank-you', (root, api) => {
     }
   }
 
-  root.mount(null);
-});
+  return;
+}

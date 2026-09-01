@@ -1,20 +1,20 @@
-# Reach Checkout — checkout UI extension.
-# Runs on the order-status ("thank you") page and hands the confirmed order id
-# back to the Reach pixel, so click IDs (fbc/fbp) are joined to the
-# server-side Purchase event (cross-device matching).
-name = "Reach Order Enrichment"
-uid = "56b6a3da-5cdb-7aa1-c29d-3d817fe05a0c796777f9"
-type = "checkout_ui_extension"
+# Learn more about configuring your checkout UI extension:
+# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration
+
+# The API version your extension will receive.
+api_version = "2026-07"
 
 [[extensions]]
-type = "checkout_ui_extension"
-name = "Reach Order Enrichment"
+name = "reach-order-enrichment"
 handle = "reach-order-enrichment"
-description = "Joins the confirmed order to the Reach pixel for accurate attribution"
+type = "ui_extension"
+uid = "56b6a3da-5cdb-7aa1-c29d-3d817fe05a0c796777f9"
 
-[extensions.targeting]
-target = "purchase.thank-you"
+[[extensions.targeting]]
+# Entry module for this extension
 module = "./src/index.js"
+# The specific checkout target this extension runs on
+target = "purchase.thank-you"
 
 [extensions.capabilities]
 api_access = true
