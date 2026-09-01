@@ -16,7 +16,7 @@ import { register } from '@shopify/web-pixels-extension';
  */
 
 // TODO: replace with your deployed Reach app URL.
-const PIXEL_URL = 'https://YOUR-APP-DOMAIN.example.com/pixel.js';
+const PIXEL_URL = 'https://reach.whatify.in/pixel.js';
 
 let trackerLoaded = false;
 
