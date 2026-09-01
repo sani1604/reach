@@ -77,9 +77,12 @@ class ShopifyAuthController extends Controller
 
         SubscribeWebhooks::dispatch($shop->id)->onQueue('default');
 
-        return redirect()->away(
-            "https://{$domain}/admin/apps/".config('shopify.app_handle', 'reach')
-        );
+        $host = $request->query('host');
+        $redirectUrl = $host
+            ? 'https://'.base64_decode($host).'/apps/'.config('shopify.app_handle', 'reach')
+            : "https://{$domain}/admin/apps/".config('shopify.app_handle', 'reach');
+
+        return redirect()->away($redirectUrl);
     }
 
     /**
