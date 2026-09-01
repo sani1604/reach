@@ -153,7 +153,82 @@ class ReachAuthAndBillingTest extends TestCase
             ->assertDontSee('Top campaigns');
     }
 
+    /* ---------- OAuth Install & Callback Flow ---------- */
+
+    public function test_oauth_install_sets_session_state_and_redirects(): void
+    {
+        $response = $this->get('/auth/install?shop=test-store.myshopify.com');
+
+        $response->assertRedirect();
+        $this->assertNotNull(session('shopify.state'));
+        $this->assertEquals('test-store.myshopify.com', session('shopify.shop'));
+    }
+
+    public function test_oauth_callback_succeeds_with_valid_state_and_hmac(): void
+    {
+        Http::fake([
+            'test-store.myshopify.com/admin/oauth/access_token' => Http::response(['access_token' => 'shpca_newtoken'], 200),
+            'test-store.myshopify.com/admin/api/*/webhooks.json' => Http::response(['webhooks' => []], 200),
+            'test-store.myshopify.com/admin/api/*/webhooks' => Http::response([], 201),
+        ]);
+
+        $state = 'test-state-123';
+        $params = [
+            'code'      => 'auth-code-xyz',
+            'shop'      => 'test-store.myshopify.com',
+            'state'     => $state,
+            'timestamp' => '1725200000',
+        ];
+        $params['hmac'] = $this->oauthQueryHmac($params);
+        $rawQuery = http_build_query($params);
+
+        $response = $this->withSession(['shopify.state' => $state, 'shopify.shop' => 'test-store.myshopify.com'])
+            ->get('/auth/callback?'.$rawQuery);
+
+        $response->assertRedirect('https://test-store.myshopify.com/admin/apps/reach');
+        $this->assertDatabaseHas('shops', [
+            'shopify_domain' => 'test-store.myshopify.com',
+            'access_token'   => 'shpca_newtoken',
+        ]);
+    }
+
+    public function test_oauth_callback_rejects_invalid_state(): void
+    {
+        $state = 'correct-state';
+        $params = [
+            'code'      => 'auth-code-xyz',
+            'shop'      => 'test-store.myshopify.com',
+            'state'     => 'wrong-state',
+            'timestamp' => '1725200000',
+        ];
+        $params['hmac'] = $this->oauthQueryHmac($params);
+        $rawQuery = http_build_query($params);
+
+        $response = $this->withSession(['shopify.state' => $state, 'shopify.shop' => 'test-store.myshopify.com'])
+            ->get('/auth/callback?'.$rawQuery);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_oauth_callback_rejects_invalid_hmac(): void
+    {
+        $state = 'test-state-123';
+        $rawQuery = 'code=auth-code-xyz&shop=test-store.myshopify.com&state=' . $state . '&timestamp=1725200000&hmac=bogus';
+
+        $response = $this->withSession(['shopify.state' => $state, 'shopify.shop' => 'test-store.myshopify.com'])
+            ->get('/auth/callback?'.$rawQuery);
+
+        $response->assertStatus(403);
+    }
+
     /* ---------- helpers ---------- */
+
+    protected function oauthQueryHmac(array $params): string
+    {
+        unset($params['hmac'], $params['signature']);
+        ksort($params);
+        return hash_hmac('sha256', http_build_query($params), 'test-secret');
+    }
 
     protected function actingAsShop()
     {

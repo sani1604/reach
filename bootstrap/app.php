@@ -13,6 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'shopify.webhook' => \App\Http\Middleware\VerifyShopifyWebhook::class,
             'shopify.request' => \App\Http\Middleware\VerifyShopifyRequest::class,

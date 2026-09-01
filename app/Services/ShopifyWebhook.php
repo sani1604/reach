@@ -21,7 +21,7 @@ class ShopifyWebhook
 
     /**
      * Verify the OAuth callback query string (hmac + signature params removed,
-     * computed over the raw query string exactly as Shopify sent it).
+     * sorted alphabetically, and hashed with HMAC-SHA256 hex digest per Shopify spec).
      */
     public static function verifyOAuthQueryString(string $rawQuery): bool
     {
@@ -31,13 +31,10 @@ class ShopifyWebhook
             return false;
         }
 
-        $parts = explode('&', $rawQuery);
-        $filtered = array_values(array_filter($parts, function (string $part) {
-            return ! str_starts_with($part, 'hmac=') && ! str_starts_with($part, 'signature=');
-        }));
-        $message = implode('&', $filtered);
+        unset($params['hmac'], $params['signature']);
+        ksort($params);
 
-        $calculated = base64_encode(hash_hmac('sha256', $message, (string) config('shopify.api_secret'), true));
+        $calculated = hash_hmac('sha256', http_build_query($params), (string) config('shopify.api_secret'));
 
         return hash_equals($hmac, $calculated);
     }

@@ -28,6 +28,7 @@ class ShopifyAuthController extends Controller
             'shopify.state' => $state,
             'shopify.shop'  => $domain,
         ]);
+        session()->save();
 
         $url = ShopifyClient::authorizeUrl(
             $domain,
