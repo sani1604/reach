@@ -92,9 +92,23 @@ class ShopifyAuthController extends Controller
 
         // First contact with the store: register webhooks + activate the
         // web pixel extension (queued so the boot stays fast).
-        if ($needsSetup || ! $shop->pixelConfigured()) {
-            PostInstallSetup::dispatch($shop->id)->onQueue('default');
+        // Also run this for existing installs: older pixel activations may
+        // contain a localhost app URL from development. ensureWebPixel()
+        // updates the settings with the public URL before Shopify fires the
+        // next storefront event.
+        // Repair the pixel immediately on app open. Relying only on a queue
+        // worker left existing stores with a stale localhost configuration,
+        // so the storefront could not send any browser events.
+        try {
+            app(ShopifyClient::class)->ensureWebPixel($shop);
+        } catch (\Throwable $e) {
+            logger()->warning('Immediate web pixel repair failed; queued retry remains available', [
+                'shop' => $domain,
+                'error' => $e->getMessage(),
+            ]);
         }
+
+        PostInstallSetup::dispatch($shop->id)->onQueue('default');
 
         session(['shop' => $domain]);
 
