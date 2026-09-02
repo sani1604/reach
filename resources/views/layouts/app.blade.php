@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title', 'Reach') — OpenAI Ads Pixel for Shopify</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    @if (config('shopify.embedded'))
+        {{-- Required by App Bridge 4 for window.shopify/idToken() initialisation. --}}
+        <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
+    @endif
 </head>
 <body>
     @if (config('shopify.embedded'))
@@ -18,6 +22,7 @@
         <nav class="app-nav">
             <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Dashboard</a>
             <a href="{{ route('settings') }}" class="{{ request()->routeIs('settings*') ? 'active' : '' }}">Settings</a>
+            <a href="{{ route('setup-guide') }}" class="{{ request()->routeIs('setup-guide') ? 'active' : '' }}">Setup guide</a>
             <a href="{{ route('billing') }}" class="{{ request()->routeIs('billing*') ? 'active' : '' }}">Billing</a>
         </nav>
         <span class="plan-badge {{ ($shop->plan ?? 'free') === 'free' ? 'free' : '' }}">

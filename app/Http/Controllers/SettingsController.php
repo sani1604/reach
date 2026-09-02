@@ -24,7 +24,6 @@ class SettingsController extends Controller
 
         $shop->update([
             'pixel_id'   => $data['pixel_id'] ?: null,
-            'capi_url'   => $data['capi_url'] ?: null,
             'capi_token' => $data['capi_token'] ?: null,
         ]);
 
@@ -42,7 +41,7 @@ class SettingsController extends Controller
 
         $probe = new Shop([
             'pixel_id'   => $data['pixel_id'] ?: $shop->pixel_id,
-            'capi_url'   => $data['capi_url'] ?: $shop->capi_url,
+            'capi_url'   => $shop->capi_url,
             'capi_token' => $data['capi_token'] ?: $shop->capi_token,
         ]);
 
@@ -77,7 +76,6 @@ class SettingsController extends Controller
     {
         return $request->validate([
             'pixel_id'   => ['nullable', 'string', 'max:255'],
-            'capi_url'   => ['nullable', 'url', 'max:500'],
             'capi_token' => ['nullable', 'string', 'max:5000'],
         ]);
     }

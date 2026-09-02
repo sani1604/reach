@@ -11,6 +11,7 @@
     <div class="wrap">
         <nav class="nav">
             <div class="brand"><span class="logo">R</span> Reach</div>
+            <a class="btn btn-ghost btn-sm" href="{{ route('auth.login') }}">Log in with Shopify</a>
             <a class="btn btn-primary btn-sm" href="{{ route('auth.install') }}">Install Free</a>
         </nav>
     </div>
@@ -20,7 +21,8 @@
         <h1>From ChatGPT click to Shopify purchase — <span class="grad">track the complete journey.</span></h1>
         <p class="lede">Reach installs the OpenAI Ads pixel and server-side Conversions API on your store in one click. See every PageView, Add to Cart, Checkout and Purchase — with accurate attribution, even when ad-blockers get in the way. No theme edits.</p>
         <div class="cta-row">
-            <a class="btn btn-saffron btn-lg" href="{{ route('auth.install') }}">Install Free</a>
+            <a class="btn btn-saffron btn-lg" href="{{ route('auth.install') }}">Install with Shopify</a>
+            <a class="btn btn-ghost btn-lg" href="{{ route('auth.login') }}">Log in with Shopify</a>
             <a class="btn btn-ghost btn-lg" href="#how">See How It Works</a>
         </div>
         <div class="trust">

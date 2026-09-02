@@ -96,7 +96,9 @@ class Shop extends Model
 
     public function capiEndpoint(): ?string
     {
-        return $this->capi_url ?: config('ads.capi_url');
+        // The endpoint is controlled by Reach, not by the merchant. Ignore
+        // any legacy per-shop value (including old localhost/demo URLs).
+        return config('ads.capi_url');
     }
 
     public function eventsLimit(): int

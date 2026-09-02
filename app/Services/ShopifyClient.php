@@ -236,7 +236,7 @@ class ShopifyClient
         // POST events — it has no access to the merchant page's origin data.
         $settings = json_encode([
             'config' => json_encode([
-                'app_url' => rtrim(config('app.url'), '/'),
+                'app_url' => config('reach.public_url'),
                 'shop'    => $shop->shopify_domain,
             ], JSON_UNESCAPED_SLASHES),
         ], JSON_UNESCAPED_SLASHES);
@@ -250,7 +250,10 @@ class ShopifyClient
                 webPixel { id }
               }
             }
-            GRAPHQL, ['webPixel' => ['settings' => $settings]]);
+            GRAPHQL, ['webPixel' => [
+                'id'       => $shop->pixel_id,
+                'settings' => $settings,
+            ]]);
 
             if (! $this->hasUserErrors($result)) {
                 return $shop->pixel_id;

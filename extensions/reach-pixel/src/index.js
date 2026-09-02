@@ -1,5 +1,7 @@
 import { register } from '@shopify/web-pixels-extension';
 
+// Keep this source file conflict-free: Shopify CLI bundles it directly during deploy.
+
 /**
  * Reach — web pixel extension (Customer Events).
  *
@@ -21,20 +23,32 @@ import { register } from '@shopify/web-pixels-extension';
 
 const DEFAULT_APP_URL = 'https://reach.whatify.in';
 
-register(({ analytics, browser, settings, context }) => {
-  // settings.config is written by the app at webPixelCreate time:
-  // {"app_url":"https://…","shop":"store.myshopify.com"}
+register(({ analytics, browser, configuration, settings, init, context }) => {
+  // Shopify's current Web Pixels API calls merchant extension settings
+  // `configuration`; older runtimes exposed them as `settings`. Supporting
+  // both is important because an empty shop value makes send() silently drop
+  // every storefront event.
+  const pixelConfig = configuration || settings || {};
   let appUrl = DEFAULT_APP_URL;
   let shop = '';
   try {
-    const parsed = JSON.parse(settings && settings.config ? settings.config : '{}');
-    if (parsed.app_url) appUrl = String(parsed.app_url);
-    if (parsed.shop) shop = String(parsed.shop).toLowerCase();
+    // webPixelCreate writes the JSON app_url/shop value into the config field.
+    const raw = pixelConfig.config || pixelConfig;
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (parsed && parsed.app_url) appUrl = String(parsed.app_url).replace(/\/+$/, '');
+    if (parsed && parsed.shop) shop = String(parsed.shop).toLowerCase();
   } catch (e) {
-    // Legacy plain-URL setting or missing config — fall back to default.
-    if (settings && settings.config && settings.config.indexOf('http') === 0) {
-      appUrl = String(settings.config).replace(/\/+$/, '');
+    // Legacy plain-URL setting or missing config — keep the public default.
+    const legacy = pixelConfig.config;
+    if (typeof legacy === 'string' && legacy.indexOf('http') === 0) {
+      appUrl = legacy.replace(/\/+$/, '');
     }
+  }
+
+  // The shop snapshot is also available from the standard init API. Use it
+  // as a final fallback for pixels created before the app config was saved.
+  if (!shop && init && init.data && init.data.shop && init.data.shop.myshopifyDomain) {
+    shop = String(init.data.shop.myshopifyDomain).toLowerCase();
   }
 
   const ctx = context || {};
@@ -120,65 +134,57 @@ register(({ analytics, browser, settings, context }) => {
   }
 
   if (analytics && typeof analytics.subscribe === 'function') {
-    analytics.subscribe('page_viewed', function (event) {
-      track('PageView', {
-        url:
-          (event && event.context && event.context.document &&
-            event.context.document.location &&
-            event.context.document.location.href) || doc.location || undefined,
-        referrer: doc.referrer || undefined,
-      });
-    });
+    // Subscribe once to Shopify's catch-all stream. This is more reliable
+    // across Customer Events API versions than registering several event
+    // handlers whose names can differ between storefront surfaces.
+    analytics.subscribe('all_events', function (event) {
+      const name = String((event && (event.name || event.eventName)) || '').toLowerCase();
+      const data = (event && event.data) || {};
 
-    analytics.subscribe('product_viewed', function (event) {
-      const variant = (event.data && event.data.productVariant) || {};
-      track('ViewContent', {
-        content_ids: [String(variant.id || '')],
-        content_type: 'product',
-        value: amount(variant.price),
-        currency: currency(variant.price),
-      });
-    });
-
-    analytics.subscribe('product_added_to_cart', function (event) {
-      const line = (event.data && event.data.cartLine) || {};
-      const merchandise = line.merchandise || {};
-      track('AddToCart', {
-        content_ids: [String(merchandise.id || '')],
-        content_type: 'product',
-        value: amount(line.cost && line.cost.totalAmount),
-        currency: currency(line.cost && line.cost.totalAmount),
-        quantity: line.quantity || undefined,
-      });
-    });
-
-    analytics.subscribe('checkout_started', function (event) {
-      const checkout = (event.data && event.data.checkout) || {};
-      track('InitiateCheckout', {
-        value: amount(checkout.totalPrice),
-        currency: currency(checkout.totalPrice),
-        num_items: checkout.lineItems ? checkout.lineItems.length : undefined,
-      });
-    });
-
-    // Order confirmation: hand the order id + click ids to the app so the
-    // server-side Purchase event gains cross-device matching signals.
-    analytics.subscribe('checkout_completed', function (event) {
-      const checkout = (event.data && event.data.checkout) || {};
-      const order = checkout.order || {};
-      const orderId = order.id ? String(order.id).replace(/\D+/g, '') : null;
-
-      send('/api/enrich', {
-        data: Object.assign(
-          {
+      if (name === 'page_viewed') {
+        track('PageView', {
+          url: event.context && event.context.document && event.context.document.location
+            ? event.context.document.location.href : undefined,
+          referrer: doc.referrer || undefined,
+        });
+      } else if (name === 'product_viewed') {
+        const variant = data.productVariant || {};
+        track('ViewContent', {
+          content_ids: [String(variant.id || '')],
+          content_type: 'product',
+          value: amount(variant.price),
+          currency: currency(variant.price),
+        });
+      } else if (name === 'product_added_to_cart') {
+        const line = data.cartLine || {};
+        const merchandise = line.merchandise || {};
+        track('AddToCart', {
+          content_ids: [String(merchandise.id || '')],
+          content_type: 'product',
+          value: amount(line.cost && line.cost.totalAmount),
+          currency: currency(line.cost && line.cost.totalAmount),
+          quantity: line.quantity || undefined,
+        });
+      } else if (name === 'checkout_started') {
+        const checkout = data.checkout || {};
+        track('InitiateCheckout', {
+          value: amount(checkout.totalPrice),
+          currency: currency(checkout.totalPrice),
+          num_items: checkout.lineItems ? checkout.lineItems.length : undefined,
+        });
+      } else if (name === 'checkout_completed') {
+        const checkout = data.checkout || {};
+        const order = checkout.order || {};
+        const orderId = order.id ? String(order.id).replace(/\D+/g, '') : null;
+        send('/api/enrich', {
+          data: Object.assign({
             order_id: orderId,
             order_name: order.name || null,
             value: amount(checkout.totalPrice),
             currency: currency(checkout.totalPrice),
-          },
-          clickIds()
-        ),
-      });
+          }, clickIds()),
+        });
+      }
     });
   }
 });

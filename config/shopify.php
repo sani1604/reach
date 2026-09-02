@@ -8,7 +8,7 @@ return [
     | Create the app in your Shopify Partner Dashboard and paste the
     | Client ID (API key) and Client Secret here, or set them via env.
     */
-    'api_key'      => env('SHOPIFY_API_KEY'),
+    'api_key'      => env('SHOPIFY_API_KEY', '3d494905b0473e553ab710f85dbb99a8'),
     'api_secret'   => env('SHOPIFY_API_SECRET'),
 
     // Latest stable Admin API version (quarterly releases, 12-month support).

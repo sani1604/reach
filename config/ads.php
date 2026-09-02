@@ -1,5 +1,12 @@
 <?php
 
+// Environment values are sometimes pasted from rich-text/Markdown.
+$capiUrl = trim((string) env('OPENAI_CAPI_URL', 'https://bzr.openai.com/v1/events'));
+if (preg_match('/^\[[^\]]+\]\(([^)]+)\)$/', $capiUrl, $match)) {
+    $capiUrl = $match[1];
+}
+$capiUrl = trim($capiUrl, " \\\"'[]()");
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -11,7 +18,7 @@ return [
     | Endpoints/tokens are configurable so real OpenAI Ads credentials can be
     | dropped in without touching code.
     */
-    'capi_url'          => env('OPENAI_CAPI_URL', 'https://capi.openai.com/v1/events'),
+    'capi_url'          => $capiUrl,
     'capi_token'        => env('OPENAI_CAPI_TOKEN'),
     'browser_pixel_url' => env('OPENAI_BROWSER_PIXEL_URL', 'https://pixel.openai.com'),
 

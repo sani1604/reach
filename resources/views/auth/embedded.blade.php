@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Loading Reach…</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    {{-- App Bridge needs the app Client ID to initialise window.shopify. --}}
+    <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
     {{-- App Bridge 4 — exposes `window.shopify` (idToken, etc.).
          The legacy unpkg UMD build exposes a different global and silently
          broke session-token auth in this app. --}}
@@ -59,8 +61,27 @@
             return Promise.reject(new Error('App Bridge unavailable'));
         }
 
+        // The CDN script can finish loading just after this inline script in
+        // slower Shopify admin iframes. Wait for App Bridge instead of
+        // entering an endless, opaque retry loop.
+        function waitForAppBridge(remaining) {
+            if (window.shopify && typeof window.shopify.idToken === 'function') {
+                return Promise.resolve();
+            }
+            if (remaining <= 0) {
+                return Promise.reject(new Error('Shopify App Bridge did not initialise'));
+            }
+            return new Promise(function (resolve) {
+                setTimeout(resolve, 250);
+            }).then(function () {
+                return waitForAppBridge(remaining - 1);
+            });
+        }
+
         function boot() {
-            freshToken().then(function (idToken) {
+            waitForAppBridge(40).then(function () {
+                return freshToken();
+            }).then(function (idToken) {
                 // Register / refresh the offline token with Shopify, then
                 // enter the app. No OAuth redirect involved.
                 return fetch('{{ route('auth.token-exchange') }}', {

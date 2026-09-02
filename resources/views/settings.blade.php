@@ -3,8 +3,17 @@
 @section('title', 'Settings')
 
 @section('content')
-    <h1 class="page-title">Settings</h1>
-    <p class="page-sub">Connect your OpenAI Ads account to start tracking.</p>
+    <div class="page-heading-row">
+        <div>
+            <h1 class="page-title">Settings</h1>
+            <p class="page-sub">Connect your OpenAI Ads account to start tracking.</p>
+        </div>
+        @if ($shop->pixelConfigured() && $shop->capi_token)
+            <span class="connection-badge ready"><span>●</span> Connected</span>
+        @else
+            <span class="connection-badge pending"><span>●</span> Setup needed</span>
+        @endif
+    </div>
 
     @if (session('test_ok'))
         <div class="alert success">✓ {{ session('test_ok') }}</div>
@@ -28,16 +37,13 @@
 
             <div class="field">
                 <label for="capi_token">Conversions API key</label>
-                <textarea id="capi_token" name="capi_token" rows="3"
-                          placeholder="Paste your OpenAI Conversions API token">{{ old('capi_token', $shop->capi_token) }}</textarea>
+                <div class="secret-input">
+                    <input type="password" id="capi_token" name="capi_token"
+                           value="{{ old('capi_token', $shop->capi_token) }}"
+                           placeholder="Paste your OpenAI Conversions API token" autocomplete="off">
+                    <button type="button" class="secret-toggle" aria-label="Show or hide API key" data-target="capi_token">Show</button>
+                </div>
                 <div class="hint">Used for server-side event delivery. Stored encrypted, never exposed in the pixel.</div>
-            </div>
-
-            <div class="field">
-                <label for="capi_url">Conversions API endpoint (optional)</label>
-                <input type="url" id="capi_url" name="capi_url" value="{{ old('capi_url', $shop->capi_url) }}"
-                       placeholder="{{ config('ads.capi_url') }}" class="input">
-                <div class="hint">Override the default endpoint. Leave blank to use the standard OpenAI Ads URL.</div>
             </div>
 
             <button class="btn btn-primary" type="submit">Save</button>
@@ -70,14 +76,21 @@
                 </td>
             </tr>
             <tr>
-                <td>CAPI endpoint</td>
-                <td class="mono">{{ $shop->capiEndpoint() }}</td>
-            </tr>
-            <tr>
                 <td>Store</td>
                 <td class="mono">{{ $shop->shopify_domain }}</td>
             </tr>
         </table>
         <p class="hint mt-16">Tracker script: <span class="mono">{{ url('/pixel.js') }}</span></p>
     </div>
+
+    <script>
+        document.querySelectorAll('.secret-toggle').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var input = document.getElementById(button.dataset.target);
+                var visible = input.type === 'text';
+                input.type = visible ? 'password' : 'text';
+                button.textContent = visible ? 'Show' : 'Hide';
+            });
+        });
+    </script>
 @endsection

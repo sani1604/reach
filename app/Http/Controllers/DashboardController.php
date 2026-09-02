@@ -85,6 +85,12 @@ class DashboardController extends Controller
         return view('dashboard', compact('shop', 'stats', 'recent', 'maxEventId'));
     }
 
+    public function setupGuide(Request $request)
+    {
+        $shop = $request->attributes->get('shop');
+        return view('setup-guide', compact('shop'));
+    }
+
     /**
      * Lightweight JSON endpoint the dashboard polls for live counters.
      */

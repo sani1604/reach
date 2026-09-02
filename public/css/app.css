@@ -245,3 +245,64 @@ textarea { resize: vertical; }
 .faq summary { font-weight: 700; cursor: pointer; font-size: 15px; }
 .faq details p { color: var(--muted); margin: 10px 0 0; font-size: 14px; }
 .landing .footer { border-top: 1px solid var(--line); padding: 28px 0; color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- First-run setup guide ---------- */
+.setup-guide { padding: 24px; }
+.setup-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.setup-heading h2 { margin: 5px 0 3px; font-size: 20px; letter-spacing: -.02em; }
+.setup-heading .sub { margin: 0; }
+.eyebrow-indigo { display: inline-flex; margin: 0; padding: 4px 10px; background: var(--brand-soft); border-color: #c7d2fe; color: var(--brand-dark); font-size: 11px; }
+.setup-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.setup-step { display: flex; align-items: flex-start; gap: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
+.setup-step.complete { border-color: #a7f3d0; background: #f7fffb; }
+.setup-check { flex: 0 0 26px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--brand-soft); color: var(--brand-dark); font-weight: 800; font-size: 13px; }
+.setup-step.complete .setup-check { background: var(--green-soft); color: var(--green); }
+.setup-step strong { display: block; font-size: 14px; margin: 1px 0 4px; }
+.setup-step p { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin: 0; }
+.setup-step .tag { margin-left: auto; flex-shrink: 0; }
+.setup-ready { margin-top: 4px; }
+@media (max-width: 700px) {
+  .setup-heading { flex-direction: column; }
+  .setup-heading .btn { width: 100%; justify-content: center; }
+  .setup-steps { grid-template-columns: 1fr; }
+}
+.landing .nav > a + a { margin-left: 8px; }
+
+/* ---------- Settings status and secret controls ---------- */
+.page-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.page-heading-row .page-sub { margin-bottom: 0; }
+.connection-badge { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.connection-badge.ready { background: var(--green-soft); color: var(--green); }
+.connection-badge.pending { background: #fffbeb; color: #92400e; }
+.secret-input { position: relative; display: flex; align-items: center; }
+.secret-input input { padding-right: 70px; }
+.secret-toggle { position: absolute; right: 10px; border: 0; background: transparent; color: var(--brand-dark); font: 700 12px var(--font); cursor: pointer; padding: 6px; }
+@media (max-width: 560px) { .page-heading-row { flex-direction: column; } }
+
+/* ---------- Shopify-style embedded app finish ---------- */
+body { background: #f6f6f7; color: #303030; }
+.app-header { height: 64px; padding: 0 28px; background: #fff; border-bottom-color: #e1e1e1; box-shadow: 0 1px 0 rgba(0,0,0,.03); }
+.app-header .brand { font-size: 19px; }
+.app-nav { gap: 3px; }
+.app-nav a { color: #616161; font-size: 15px; padding: 9px 15px; border-radius: 10px; }
+.app-nav a.active { background: #f0f1ff; color: #4537c9; }
+.app-main { max-width: 1180px; padding: 34px 28px 72px; }
+.page-title { color: #303030; font-size: 28px; letter-spacing: -.025em; }
+.page-sub { color: #6d7175; font-size: 16px; }
+.card, .stat, .price-card { border-color: #dedede; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.card { padding: 26px 28px; }
+.card h3 { font-size: 18px; margin-bottom: 8px; }
+.card .sub { font-size: 15px; color: #6d7175; }
+.btn { border-radius: 10px; }
+.btn-primary { background: #303030; border-color: #303030; color: #fff; }
+.btn-primary:hover { background: #1f1f1f; border-color: #1f1f1f; }
+.btn-ghost { background: #fff; color: #303030; border-color: #c8c8c8; }
+.btn-ghost:hover { background: #f6f6f7; }
+input[type=text], input[type=url], input[type=password], textarea { border-color: #b5b5b5; border-radius: 11px; font-size: 16px; padding: 13px 14px; }
+.field label { font-size: 15px; }
+.hint { color: #6d7175; }
+.setup-guide { background: #fff; }
+.setup-heading h2 { font-size: 22px; }
+.setup-step { border-color: #dedede; }
+.price-card.featured { border-color: #303030; box-shadow: 0 0 0 1px #303030, var(--shadow); }
+@media (max-width: 700px) { .app-header { padding: 0 16px; } .app-main { padding: 24px 16px 56px; } .app-nav { overflow-x: auto; } }

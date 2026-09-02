@@ -6,6 +6,39 @@
     <h1 class="page-title">Dashboard</h1>
     <p class="page-sub">Your OpenAI Ads funnel, revenue and top products — last 30 days.</p>
 
+    @if (! $shop->pixelConfigured() || ! $shop->capi_token)
+        <section class="setup-guide card mb-16" aria-labelledby="setup-title">
+            <div class="setup-heading">
+                <div>
+                    <span class="eyebrow eyebrow-indigo">Welcome to Reach</span>
+                    <h2 id="setup-title">Finish your setup</h2>
+                    <p class="sub">Your app is installed. Complete these two quick steps to start receiving attributed events.</p>
+                </div>
+                <a class="btn btn-primary" href="{{ route('settings') }}">Open setup</a>
+            </div>
+            <div class="setup-steps">
+                <div class="setup-step {{ $shop->pixelConfigured() ? 'complete' : '' }}">
+                    <span class="setup-check">{{ $shop->pixelConfigured() ? '✓' : '1' }}</span>
+                    <div>
+                        <strong>Connect your OpenAI Ads Pixel</strong>
+                        <p>{{ $shop->pixelConfigured() ? 'Pixel ID saved. Your storefront pixel is ready.' : 'Add your Pixel ID in Settings. Reach will load it through Shopify Customer Events.' }}</p>
+                    </div>
+                    <span class="tag {{ $shop->pixelConfigured() ? 'green' : 'amber' }}">{{ $shop->pixelConfigured() ? 'Done' : 'To do' }}</span>
+                </div>
+                <div class="setup-step {{ $shop->capi_token ? 'complete' : '' }}">
+                    <span class="setup-check">{{ $shop->capi_token ? '✓' : '2' }}</span>
+                    <div>
+                        <strong>Add your Conversions API key</strong>
+                        <p>{{ $shop->capi_token ? 'CAPI key saved. Server-side delivery is configured.' : 'Paste your CAPI key in Settings so purchases are sent server-side and survive ad blockers.' }}</p>
+                    </div>
+                    <span class="tag {{ $shop->capi_token ? 'green' : 'amber' }}">{{ $shop->capi_token ? 'Done' : 'To do' }}</span>
+                </div>
+            </div>
+        </section>
+    @else
+        <div class="alert success setup-ready">✓ Reach is set up and ready to track your store.</div>
+    @endif
+
     <div class="grid stats mb-16">
         <div class="stat">
             <div class="label">Net revenue from OpenAI Ads</div>

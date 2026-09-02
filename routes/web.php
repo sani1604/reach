@@ -42,6 +42,7 @@ Route::prefix('auth')->group(function () {
 */
 Route::middleware('shopify.request')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/setup-guide', [DashboardController::class, 'setupGuide'])->name('setup-guide');
     Route::get('/dashboard/live', [DashboardController::class, 'live'])->name('dashboard.live');
     Route::get('/dashboard/stream', [DashboardController::class, 'stream'])->name('dashboard.stream');
 
