@@ -169,7 +169,17 @@ GraphQL-first Admin API calls.
    The toml is the source of truth for the app URL, redirect URLs, scopes and
    webhook subscriptions (including the mandatory privacy topics).
 
-2. Deploy config + extensions:
+2. **Before your first deploy: declare Protected Customer Data access.**
+   The commerce webhooks (`orders/*`, `checkouts/create`, `refunds/create`)
+   contain customer email/phone, so the deploy fails with *"This app is not
+   approved to subscribe to webhook topics containing protected customer
+   data"* until you declare them: dashboard → app → **Configuration →
+   Customer data** (Dev Dashboard) or **API access requests** (Partner
+   Dashboard) → select **email + phone** and paste the ready-made
+   justifications from **[docs/protected-customer-data.md](docs/protected-customer-data.md)**.
+   Development stores work immediately after declaring — no review needed.
+
+3. Deploy config + extensions:
 
    ```bash
    shopify app deploy
@@ -180,7 +190,7 @@ GraphQL-first Admin API calls.
    `ShopifyClient::ensureWebPixel()`), so no manual Customer Events setup is
    needed.
 
-3. Point the app at your Laravel deployment (`.env`):
+4. Point the app at your Laravel deployment (`.env`):
 
    ```dotenv
    APP_URL=https://your-domain.com
@@ -189,7 +199,7 @@ GraphQL-first Admin API calls.
    SHOPIFY_APP_HANDLE=your-app-handle   # admin URL: /apps/{handle}
    ```
 
-4. Production cookies (the admin runs your app in a third-party iframe):
+5. Production cookies (the admin runs your app in a third-party iframe):
 
    ```dotenv
    SESSION_SAME_SITE=none
@@ -197,7 +207,7 @@ GraphQL-first Admin API calls.
    SESSION_PARTITIONED_COOKIE=true
    ```
 
-5. Install from a store: `https://your-domain.com/auth/install?shop=your-store.myshopify.com`
+6. Install from a store: `https://your-domain.com/auth/install?shop=your-store.myshopify.com`
    or directly from the app listing / Dev Dashboard (managed installation).
 
 ### How the embedded flow works
@@ -232,6 +242,7 @@ as the fallback for non-managed installs.
 | Token exchange / managed installation for embedded apps | ✅ `/auth/token-exchange`, `use_legacy_install_flow = false` |
 | Session tokens on every embedded request (cookie-independent) | ✅ Bearer header, `?id_token=`, App Bridge 4 |
 | Mandatory privacy webhooks (`customers/data_request`, `customers/redact`, `shop/redact`) | ✅ toml `compliance_topics` + handlers in `WebhookController` |
+| Protected customer data declaration (email + phone, minimum required) | 📋 one-time dashboard step — justifications in `docs/protected-customer-data.md` |
 | Mandatory webhooks (`app/uninstalled`, `app_subscriptions/update`) | ✅ toml subscriptions + HMAC-verified `/webhooks` |
 | Web pixel activated per store (`webPixelCreate`) | ✅ `PostInstallSetup` job |
 | CSP `frame-ancestors` for the admin iframe | ✅ `SetEmbedFrameHeaders` middleware |

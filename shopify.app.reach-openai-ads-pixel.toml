@@ -41,6 +41,12 @@ api_version = "2026-07"
 
 # Commerce topics — delivered to the single HMAC-verified endpoint, which
 # routes on the X-Shopify-Topic header.
+#
+# NOTE: these four topics contain protected customer data, so `shopify app
+# deploy` fails until the app has declared Protected customer data access in
+# the dashboard (email + phone fields). See docs/protected-customer-data.md
+# for the exact click-path and ready-to-paste justifications. Development
+# stores can use the data immediately after declaring — no review needed.
 [[webhooks.subscriptions]]
 topics = [
   "app/uninstalled",
