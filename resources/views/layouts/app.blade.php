@@ -14,17 +14,20 @@
     @if (config('shopify.embedded'))
         <script>window.__reachShop = @js(($shop->shopify_domain ?? session('shop')));</script>
     @endif
+    {{-- App Bridge renders this as Shopify Admin's left navigation. Keep the
+         app shell free of a duplicate website-style top navigation. --}}
+    <ui-nav-menu>
+        <a href="{{ route('dashboard') }}">Dashboard</a>
+        <a href="{{ route('settings') }}">Settings</a>
+        <a href="{{ route('setup-guide') }}">Setup guide</a>
+        <a href="{{ route('billing') }}">Billing</a>
+    </ui-nav-menu>
+
     <header class="app-header">
         <div class="brand">
             <span class="logo">R</span>
             Reach
         </div>
-        <nav class="app-nav">
-            <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Dashboard</a>
-            <a href="{{ route('settings') }}" class="{{ request()->routeIs('settings*') ? 'active' : '' }}">Settings</a>
-            <a href="{{ route('setup-guide') }}" class="{{ request()->routeIs('setup-guide') ? 'active' : '' }}">Setup guide</a>
-            <a href="{{ route('billing') }}" class="{{ request()->routeIs('billing*') ? 'active' : '' }}">Billing</a>
-        </nav>
         <span class="plan-badge {{ ($shop->plan ?? 'free') === 'free' ? 'free' : '' }}">
             {{ ucfirst($shop->plan ?? 'Free') }} plan
         </span>
