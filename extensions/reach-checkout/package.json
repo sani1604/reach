@@ -1,7 +1,4 @@
 {
   "name": "reach-checkout-extension",
-  "private": true,
-  "dependencies": {
-    "@shopify/ui-extensions": "*"
-  }
+  "private": true
 }

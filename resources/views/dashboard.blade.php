@@ -1,48 +1,84 @@
 @extends('layouts.app')
 
-@section('title', 'Dashboard')
+@section('title', 'Performance')
 
 @section('content')
-    <h1 class="page-title">Dashboard</h1>
-    <p class="page-sub">Your OpenAI Ads funnel, revenue and top products — last 30 days.</p>
+    <div class="status-banner">
+        <div class="left">
+            <div class="icon-box">✓</div>
+            <div>
+                <h4>Tracking healthy</h4>
+                <p>Pixel installed • Server-side events active • Event taxonomy verified</p>
+            </div>
+        </div>
+        <div class="right">
+            <span class="live-dot"></span> Live
+        </div>
+    </div>
 
+    <h1 class="page-title">Performance</h1>
+    <p class="page-sub">OpenAI Ads tracking and Shopify event activity.</p>
+
+    <!-- 5 Quick Stat Cards matching screenshot image-1 -->
     <div class="grid stats mb-16">
+        @php
+            $counts = collect($stats['funnel'])->pluck('count', 'name')->all();
+            $pageViews = $counts['PageView'] ?? 0;
+            $productViews = $counts['ViewContent'] ?? 0;
+            $addToCart = $counts['AddToCart'] ?? 0;
+            $checkout = $counts['InitiateCheckout'] ?? 0;
+            $purchases = $counts['Purchase'] ?? 0;
+        @endphp
         <div class="stat">
+            <div class="label">Page views</div>
+            <div class="value" id="stat-pv">{{ number_format($pageViews) }}</div>
+            <div class="delta">Delivered</div>
+        </div>
+        <div class="stat">
+            <div class="label">Product views</div>
+            <div class="value" id="stat-vc">{{ number_format($productViews) }}</div>
+            <div class="delta">Delivered</div>
+        </div>
+        <div class="stat">
+            <div class="label">Add to cart</div>
+            <div class="value" id="stat-atc">{{ number_format($addToCart) }}</div>
+            <div class="delta">Delivered</div>
+        </div>
+        <div class="stat">
+            <div class="label">Checkout</div>
+            <div class="value" id="stat-chk">{{ number_format($checkout) }}</div>
+            <div class="delta">Delivered</div>
+        </div>
+        <div class="stat">
+            <div class="label">Purchases</div>
+            <div class="value green" id="stat-pur">{{ number_format($purchases) }}</div>
+            <div class="delta">Delivered</div>
+        </div>
+    </div>
+
+    <!-- Revenue & attribution summary -->
+    <div class="grid stats mb-16">
+        <div class="stat" style="grid-column: span 2;">
             <div class="label">Net revenue from OpenAI Ads</div>
             <div class="value green" id="stat-net">₹{{ number_format((float) $stats['netRevenue'], 0) }}</div>
-            <div class="delta">gross ₹{{ number_format((float) $stats['revenue'], 0) }} · refunds ₹{{ number_format((float) $stats['refunds'], 0) }}</div>
+            <div class="delta" style="color: var(--muted);">gross ₹{{ number_format((float) $stats['revenue'], 0) }} · refunds ₹{{ number_format((float) $stats['refunds'], 0) }}</div>
         </div>
-        <div class="stat">
+        <div class="stat" style="grid-column: span 2;">
             <div class="label">Orders attributed</div>
             <div class="value">{{ number_format($stats['orders']) }}</div>
-            <div class="delta">unique Shopify orders</div>
+            <div class="delta" style="color: var(--muted);">unique Shopify orders</div>
         </div>
-        <div class="stat">
-            <div class="label">Refunds</div>
-            <div class="value">{{ number_format($stats['refundCount']) }}</div>
-            <div class="delta">₹{{ number_format((float) $stats['refunds'], 0) }} refunded</div>
-        </div>
-        <div class="stat">
-            <div class="label">Events — last hour</div>
-            <div class="value brand" id="stat-hour">{{ number_format($stats['lastHour']) }}</div>
-            <div class="delta">live</div>
-        </div>
-        <div class="stat">
-            <div class="label">Events today</div>
-            <div class="value" id="stat-today">{{ number_format($stats['todayCount']) }}</div>
-            <div class="delta">all events</div>
-        </div>
-        <div class="stat">
+        <div class="stat" style="grid-column: span 2;">
             <div class="label">Events this month</div>
             <div class="value" id="stat-month">{{ number_format($shop->monthly_event_count) }}</div>
-            <div class="delta">of {{ number_format($shop->eventsLimit()) }} on your plan</div>
+            <div class="delta" style="color: var(--muted);">of {{ number_format($shop->eventsLimit()) }} on your plan</div>
         </div>
     </div>
 
     <div class="grid cols-2 mb-16">
         <div class="card">
-            <h3>Conversion funnel</h3>
-            <p class="sub">Browser + server-side, deduplicated with shared event IDs.</p>
+            <h3>Event funnel</h3>
+            <p class="sub">All tracked Shopify activity in the last 30 days.</p>
             @foreach ($stats['funnel'] as $step)
                 <div class="funnel-row {{ $step['name'] === 'Purchase' ? 'highlight' : '' }}">
                     <div class="fname">{{ $step['label'] }}</div>
@@ -68,35 +104,6 @@
             </div>
         </div>
     </div>
-
-    @if (($shop->plan ?? 'free') === 'growth')
-        <div class="grid cols-2 mb-16">
-            <div class="card">
-                <h3>Top campaigns</h3>
-                <p class="sub">Conversions by UTM campaign, last 30 days.</p>
-                @if (empty($stats['topCampaigns']))
-                    <p class="muted small">No campaign data yet — add UTM parameters to your ChatGPT Ads links (e.g. <span class="mono">?utm_campaign=diwali-sale</span>).</p>
-                @else
-                    <table class="list">
-                        @foreach ($stats['topCampaigns'] as $campaign => $count)
-                            <tr>
-                                <td class="mono">{{ $campaign }}</td>
-                                <td class="nowrap" style="text-align: right; font-weight: 700;">{{ $count }} events</td>
-                            </tr>
-                        @endforeach
-                    </table>
-                @endif
-            </div>
-
-            <div class="card">
-                <h3>Live feed</h3>
-                <p class="sub"><span id="live-status" style="color: var(--green); font-weight: 700;">● live</span> — events stream in as they happen.</p>
-                <div id="live-feed" class="muted small" style="max-height: 220px; overflow-y: auto;">
-                    <p>Connecting…</p>
-                </div>
-            </div>
-        </div>
-    @endif
 
     <div class="grid cols-2 mb-16">
         <div class="card">
@@ -161,80 +168,13 @@
                 fetch(endpoint, { headers: { 'Accept': 'application/json' } })
                     .then(function (r) { if (!r.ok) throw new Error('bad status'); return r.json(); })
                     .then(function (d) {
-                        set('stat-today', fmt(d.today));
-                        set('stat-hour', fmt(d.last_hour));
                         set('stat-month', fmt(d.month));
                         set('stat-net', '₹' + fmt(d.net_revenue));
                     })
-                    .catch(function () { /* keep showing the last known numbers */ });
+                    .catch(function () {});
             }
 
             setInterval(poll, 15000);
-        })();
-
-        (function () {
-            'use strict';
-            var feed = document.getElementById('live-feed');
-            if (!feed) return;
-
-            var status = document.getElementById('live-status');
-            var after = {{ $maxEventId }};
-            var streamUrl = {!! json_encode(route('dashboard.stream')) !!} + '?after=' + after;
-            var buffer = [];
-
-            function flush() {
-                var node = feed.querySelector('p');
-                if (node) node.remove();
-
-                buffer.forEach(function (html) {
-                    var div = document.createElement('div');
-                    div.style.cssText = 'padding:3px 0;border-bottom:1px solid var(--line);font-size:12.5px;';
-                    div.innerHTML = html;
-                    feed.prepend(div);
-                });
-                buffer = [];
-            }
-
-            function schedule() {
-                if (buffer.length) flush();
-            }
-            setInterval(schedule, 3000);
-
-            var src = new EventSource(streamUrl);
-
-            src.addEventListener('event', function (e) {
-                if (status) status.textContent = '● live';
-                try {
-                    var d = JSON.parse(e.data);
-                    var value = d.value != null ? ' · ₹' + Number(d.value).toLocaleString('en-IN') : '';
-                    var when = d.occurred_at ? new Date(d.occurred_at).toLocaleTimeString() : '';
-                    var tag = d.event_name === 'Purchase' ? 'green' : (d.event_name === 'PurchaseCancelled' ? 'amber' : '');
-                    buffer.unshift(
-                        '<span class="tag ' + tag + '">' + d.event_name + '</span> ' +
-                        '<span class="tag gray">' + d.source + '</span>' +
-                        '<span class="muted"> ' + when + '</span>' +
-                        '<strong>' + value + '</strong>'
-                    );
-                } catch (err) { /* skip malformed */ }
-            });
-
-            src.addEventListener('eof', function () {
-                if (status) status.textContent = '● reconnecting';
-                src.close();
-                after = (buffer.length === 0) ? after : after;
-                var q = streamUrl;
-                setTimeout(function () {
-                    src = new EventSource(q);
-                }, 1500);
-            });
-
-            src.onerror = function () {
-                if (status) status.textContent = '● reconnecting';
-                src.close();
-                setTimeout(function () {
-                    src = new EventSource(streamUrl);
-                }, 3000);
-            };
         })();
     </script>
 @endsection

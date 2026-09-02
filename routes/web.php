@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PixelController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SetupGuideController;
 use App\Http\Controllers\ShopifyAuthController;
 use App\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +40,8 @@ Route::middleware('shopify.request')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/live', [DashboardController::class, 'live'])->name('dashboard.live');
     Route::get('/dashboard/stream', [DashboardController::class, 'stream'])->name('dashboard.stream');
+
+    Route::get('/setup-guide', [SetupGuideController::class, 'index'])->name('setup.guide');
 
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
     Route::post('/settings', [SettingsController::class, 'save'])->name('settings.save');
