@@ -21,7 +21,6 @@ embedded = true
 # Push URL changes from this file on deploy so the Dev Dashboard and the
 # app config never drift apart.
 automatically_update_urls_on_dev = true
-include_config_on_deploy = true
 
 [access_scopes]
 # write_pixels is required to activate the Customer Events web pixel after

@@ -11,8 +11,7 @@ runtime_context = "strict"
 [settings]
 type = "object"
 
-[[settings.fields]]
-key = "config"
+[settings.fields.config]
 type = "single_line_text_field"
 name = "Reach config (JSON)"
 description = "{\"app_url\":\"https://your-app-domain.com\",\"shop\":\"store.myshopify.com\"} — set automatically by the app at install time"
