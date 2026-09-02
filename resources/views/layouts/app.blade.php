@@ -17,7 +17,7 @@
     {{-- App Bridge renders this as Shopify Admin's left navigation. Keep the
          app shell free of a duplicate website-style top navigation. --}}
     <ui-nav-menu>
-        <a href="{{ route('dashboard') }}">Dashboard</a>
+        <a href="{{ route('dashboard') }}">Performance</a>
         <a href="{{ route('settings') }}">Settings</a>
         <a href="{{ route('setup-guide') }}">Setup guide</a>
         <a href="{{ route('billing') }}">Billing</a>
