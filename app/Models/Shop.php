@@ -10,6 +10,10 @@ class Shop extends Model
     protected $fillable = [
         'shopify_domain',
         'access_token',
+        'refresh_token',
+        'token_expires_at',
+        'refresh_token_expires_at',
+        'token_scopes',
         'plan',
         'plan_status',
         'pixel_id',
@@ -24,9 +28,11 @@ class Shop extends Model
     protected function casts(): array
     {
         return [
-            'installed_at'    => 'datetime',
-            'uninstalled_at'  => 'datetime',
-            'events_reset_at' => 'datetime',
+            'installed_at'             => 'datetime',
+            'uninstalled_at'           => 'datetime',
+            'token_expires_at'         => 'datetime',
+            'refresh_token_expires_at' => 'datetime',
+            'events_reset_at'          => 'datetime',
         ];
     }
 
@@ -40,9 +46,42 @@ class Shop extends Model
         return $this->hasMany(Charge::class);
     }
 
+    public function visitors(): HasMany
+    {
+        return $this->hasMany(Visitor::class);
+    }
+
     public function isInstalled(): bool
     {
         return $this->uninstalled_at === null && $this->access_token !== null;
+    }
+
+    /**
+     * True when the offline access token is missing or about to expire and
+     * needs a refresh-token grant (2026 expiring-token policy).
+     */
+    public function tokenNeedsRefresh(): bool
+    {
+        if (! $this->access_token) {
+            return false;
+        }
+
+        if (! $this->token_expires_at) {
+            return false; // legacy non-expiring token
+        }
+
+        // Refresh 5 minutes ahead of the deadline to avoid racing expiry.
+        return $this->token_expires_at->lte(now()->addMinutes(5));
+    }
+
+    public function refreshTokenUsable(): bool
+    {
+        if (! $this->refresh_token) {
+            return false;
+        }
+
+        return ! $this->refresh_token_expires_at
+            || $this->refresh_token_expires_at->isFuture();
     }
 
     public function isOnPaidPlan(): bool

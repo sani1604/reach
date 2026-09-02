@@ -9,21 +9,21 @@ use Illuminate\Http\Request;
 class HomeController extends Controller
 {
     /**
-     * Smart entry point. When loaded inside the Shopify admin (embedded)
-     * for an installed store, jump straight to the dashboard. Otherwise
-     * show the public landing page.
+     * Smart entry point — also the application_url target.
+     *
+     * When Shopify loads the app inside the admin iframe it appends
+     * ?shop=&host=. OAuth redirects are blocked inside that iframe, so the
+     * merchant is handed to the embedded boot page: it authenticates with an
+     * App Bridge session token (token exchange / managed installation) and
+     * then navigates to the dashboard. Without a shop param this is the
+     * public landing page.
      */
     public function index(Request $request)
     {
         $domain = ShopifyRequest::shopDomain($request);
 
         if ($domain) {
-            $shop = Shop::where('shopify_domain', $domain)->first();
-            if ($shop && $shop->isInstalled()) {
-                return redirect()->route('dashboard');
-            }
-
-            return redirect()->route('auth.install', ['shop' => $domain]);
+            return app(ShopifyAuthController::class)->boot($request);
         }
 
         return $this->landing($request);

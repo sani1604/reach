@@ -15,6 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
 
+        $middleware->web(append: [
+            \App\Http\Middleware\SetEmbedFrameHeaders::class,
+        ]);
+
         $middleware->alias([
             'shopify.webhook' => \App\Http\Middleware\VerifyShopifyWebhook::class,
             'shopify.request' => \App\Http\Middleware\VerifyShopifyRequest::class,
@@ -23,6 +27,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'webhooks',
             'webhooks/*',
+            // App Bridge session-token authenticated endpoints — the JWT in
+            // the Authorization header replaces the CSRF cookie check.
+            'auth/token-exchange',
+            // Embedded form posts authenticate via session token.
+            'settings',
+            'settings/*',
+            'billing',
+            'billing/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

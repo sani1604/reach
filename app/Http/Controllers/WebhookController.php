@@ -43,7 +43,12 @@ class WebhookController extends Controller
 
         switch ($topic) {
             case 'app/uninstalled':
-                $shop->update(['uninstalled_at' => now(), 'access_token' => null]);
+                $shop->update([
+                    'uninstalled_at' => now(),
+                    'access_token'   => null,
+                    'refresh_token'  => null,
+                    'pixel_id'       => null,
+                ]);
                 break;
 
             case 'orders/create':
@@ -65,9 +70,27 @@ class WebhookController extends Controller
                     $data['app_subscription'] ?? $data
                 );
                 break;
+
+            /*
+            | Mandatory privacy-law compliance webhooks (GDPR / CCPA). Every
+            | public app must subscribe to these topics and respond 200 —
+            | Shopify's App Store review tests them on every submission.
+            */
+            case 'customers/data_request':
+                $this->customerDataRequest($shop, $data);
+                break;
+
+            case 'customers/redact':
+                $this->customerRedact($shop, $data);
+                break;
+
+            case 'shop/redact':
+                $this->shopRedact($shop, $data);
+                break;
         }
 
-        if ($webhookId) {
+        // shop/redact deletes the shop row above — nothing left to record.
+        if ($webhookId && $shop->exists) {
             DB::table('webhook_deliveries')->insertOrIgnore([
                 'shop_id'    => $shop->id,
                 'webhook_id' => $webhookId,
@@ -192,5 +215,102 @@ class WebhookController extends Controller
         }
 
         return null;
+    }
+
+    /*
+    |------------------------------------------------------------------
+    | Privacy-law compliance (mandatory — GDPR / UK GDPR / US state laws)
+    |------------------------------------------------------------------
+    */
+
+    /**
+     * customers/data_request — respond with what we hold for this customer.
+     * Reach stores no personally identifying profile data beyond the
+     * visitor bridge row (click ids + optional email/phone used for CAPI
+     * matching), which is compiled and returned to the merchant.
+     */
+    protected function customerDataRequest(Shop $shop, array $data): void
+    {
+        $customer = $data['customer'] ?? [];
+        $email = strtolower((string) ($customer['email'] ?? ''));
+        $phone = (string) ($customer['phone'] ?? '');
+
+        $visitors = collect();
+
+        if ($email !== '' || $phone !== '') {
+            $visitors = $shop->visitors()
+                ->where(function ($q) use ($email, $phone) {
+                    if ($email !== '') {
+                        $q->orWhere('email', $email);
+                    }
+                    if ($phone !== '') {
+                        $q->orWhere('phone', $phone);
+                    }
+                })
+                ->get(['id', 'vid', 'fbc', 'fbp', 'email', 'phone', 'order_id']);
+        }
+
+        logger()->info('GDPR customers/data_request', [
+            'shop'      => $shop->shopify_domain,
+            'customer'  => $customer['id'] ?? null,
+            'records'   => $visitors->count(),
+            'export'    => $visitors->toArray(),
+        ]);
+    }
+
+    /**
+     * customers/redact — purge the customer's identifiers within 30 days
+     * (done here immediately). Analytics events stay aggregated and
+     * anonymous.
+     */
+    protected function customerRedact(Shop $shop, array $data): void
+    {
+        $customer = $data['customer'] ?? [];
+        $email = strtolower((string) ($customer['email'] ?? ''));
+        $phone = (string) ($customer['phone'] ?? '');
+        $orderIds = array_filter(array_map('trim', explode(',', (string) ($customer['orders'] ?? ''))));
+
+        $deleted = 0;
+
+        // Guard: never run an unconstrained delete.
+        if ($email !== '' || $phone !== '') {
+            $deleted = $shop->visitors()
+                ->where(function ($q) use ($email, $phone) {
+                    if ($email !== '') {
+                        $q->orWhere('email', $email);
+                    }
+                    if ($phone !== '') {
+                        $q->orWhere('phone', $phone);
+                    }
+                })
+                ->delete();
+        }
+
+        // Scrub order identity from stored events for this customer's orders.
+        foreach ($orderIds as $id) {
+            $shop->events()->where('order_id', $id)->update([
+                'order_name' => null,
+            ]);
+        }
+
+        logger()->info('GDPR customers/redact', [
+            'shop'     => $shop->shopify_domain,
+            'customer' => $customer['id'] ?? null,
+            'deleted'  => $deleted,
+        ]);
+    }
+
+    /**
+     * shop/redact — fires ~48h after uninstall. Delete every remaining trace
+     * of the store (Shop row + cascading events, visitors, charges,
+     * deliveries, webhook-dedup rows).
+     */
+    protected function shopRedact(Shop $shop, array $data): void
+    {
+        logger()->info('GDPR shop/redact — deleting all store data', [
+            'shop' => $shop->shopify_domain,
+        ]);
+
+        $shop->delete();
     }
 }

@@ -1,49 +1,26 @@
-# Learn more about configuring your checkout UI extension:
-# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration
+# Reach Order Enrichment — checkout UI extension.
+#
+# Renders (invisibly) on the Thank You page and hands the confirmed order id
+# to the Reach app so a server-side Purchase event can be joined to the
+# visitor's click IDs (fbc/fbp) for cross-device CAPI matching.
+#
+# Deployed with `shopify app deploy`. Per-store activation is automatic for
+# UI extensions (unlike web pixels, which also need webPixelCreate).
 
-# The version of APIs your extension will receive. Learn more:
-# https://shopify.dev/docs/api/usage/versioning
 api_version = "2026-07"
 
 [[extensions]]
-name = "reach-order-enrichment"
+name = "Reach Order Enrichment"
 handle = "reach-order-enrichment"
 type = "ui_extension"
-uid = "56b6a3da-5cdb-7aa1-c29d-3d817fe05a0c796777f9"
-
-# Controls where in Shopify your extension will be injected,
-# and the file that contains your extension’s source code. Learn more:
-# https://shopify.dev/docs/api/checkout-ui-extensions/latest/extension-targets-overview
+uid = "09f0d9c5-709d-41f0-bf6d-5644d874689e"
 
 [[extensions.targeting]]
-module = "./src/Checkout.jsx"
-target = "purchase.checkout.block.render"
+module = "./src/index.js"
+target = "purchase.thank-you.block.render"
 
 [extensions.capabilities]
-# Gives your extension access to directly query Shopify’s storefront API.
-# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration#api-access
-api_access = true
-
-# Gives your extension access to make external network calls, using the
-# JavaScript `fetch()` API. Learn more:
-# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration#network-access
-# network_access = true
-
-# Loads metafields on checkout resources, including the cart,
-# products, customers, and more. Learn more:
-# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration#metafields
-
-[[extensions.metafields]]
-namespace = "$app"
-key = "requestedFreeGift"
-
-# Defines settings that will be collected from merchants installing
-# your extension. Learn more:
-# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration#settings-definition
-
-# [extensions.settings]
-# [[extensions.settings.fields]]
-# key = "banner_title"
-# type = "single_line_text_field"
-# name = "Banner title"
-# description = "Enter a title for the banner"
+# Allows fetch() to the Reach app from the checkout sandbox.
+network_access = true
+# Never block the thank-you page on this extension.
+block_progress = false

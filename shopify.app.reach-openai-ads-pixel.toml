@@ -1,17 +1,33 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+# Reach — OpenAI Ads Pixel for Shopify
+#
+# Shopify CLI / Dev Dashboard app configuration (2026).
+# Link + deploy with:
+#   shopify app config link     # one-time, binds client_id
+#   shopify app deploy          # pushes config + extensions
+#
+# NOTE: keep exactly ONE shopify.app.*.toml file in the repo root — multiple
+# config files make the CLI pick the wrong app or fail validation.
 
 client_id = "3d494905b0473e553ab710f85dbb99a8"
 name = "Reach — OpenAI Ads Pixel"
-application_url = "https://reach.whatify.in/dashboard"
+
+# The application_url is loaded inside the admin iframe with ?shop=&host=
+# params. It must be the bare app root — sub-paths like /dashboard bypass
+# the embedded boot flow and can render "page doesn't exist" errors.
+application_url = "https://reach.whatify.in/"
 embedded = true
 
-[webhooks]
-api_version = "2026-07"
+[build]
+# Push URL changes from this file on deploy so the Dev Dashboard and the
+# app config never drift apart.
+automatically_update_urls_on_dev = true
+include_config_on_deploy = true
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_orders,read_products"
-optional_scopes = [ ]
+# write_pixels is required to activate the Customer Events web pixel after
+# install (webPixelCreate). Scope changes are handled by Shopify managed
+# installation — no re-auth redirect needed.
+scopes = "read_orders,read_products,write_pixels"
 use_legacy_install_flow = false
 
 [auth]
@@ -19,3 +35,26 @@ redirect_urls = [
   "https://reach.whatify.in/auth/callback",
   "https://reach.whatify.in/auth/install"
 ]
+
+[webhooks]
+# Latest stable Admin API version (each version is supported for 12 months).
+api_version = "2026-07"
+
+# Commerce topics — delivered to the single HMAC-verified endpoint, which
+# routes on the X-Shopify-Topic header.
+[[webhooks.subscriptions]]
+topics = [
+  "app/uninstalled",
+  "orders/create",
+  "orders/paid",
+  "checkouts/create",
+  "refunds/create",
+  "app_subscriptions/update"
+]
+uri = "/webhooks"
+
+# MANDATORY privacy-law compliance topics for public apps (GDPR / UK GDPR /
+# US state privacy laws). App Store review tests these on every submission.
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "/webhooks"

@@ -182,6 +182,16 @@
             var streamUrl = {!! json_encode(route('dashboard.stream')) !!} + '?after=' + after;
             var buffer = [];
 
+            // SSE cannot send headers — authenticate with ?id_token= instead.
+            function openStream(url) {
+                if (window.reachAuth && window.reachAuth.shop) {
+                    return window.reachAuth.withToken(url).then(function (signed) {
+                        return new EventSource(signed);
+                    });
+                }
+                return Promise.resolve(new EventSource(url));
+            }
+
             function flush() {
                 var node = feed.querySelector('p');
                 if (node) node.remove();
@@ -200,9 +210,17 @@
             }
             setInterval(schedule, 3000);
 
-            var src = new EventSource(streamUrl);
+            var src = null;
 
-            src.addEventListener('event', function (e) {
+            function connect() {
+                openStream(streamUrl).then(function (es) {
+                    src = es;
+                    wire(src);
+                });
+            }
+
+            function wire(s) {
+            s.addEventListener('event', function (e) {
                 if (status) status.textContent = '● live';
                 try {
                     var d = JSON.parse(e.data);
@@ -218,23 +236,20 @@
                 } catch (err) { /* skip malformed */ }
             });
 
-            src.addEventListener('eof', function () {
+            s.addEventListener('eof', function () {
                 if (status) status.textContent = '● reconnecting';
-                src.close();
-                after = (buffer.length === 0) ? after : after;
-                var q = streamUrl;
-                setTimeout(function () {
-                    src = new EventSource(q);
-                }, 1500);
+                s.close();
+                setTimeout(connect, 1500);
             });
 
-            src.onerror = function () {
+            s.onerror = function () {
                 if (status) status.textContent = '● reconnecting';
-                src.close();
-                setTimeout(function () {
-                    src = new EventSource(streamUrl);
-                }, 3000);
+                s.close();
+                setTimeout(connect, 3000);
             };
+            }
+
+            connect();
         })();
     </script>
 @endsection

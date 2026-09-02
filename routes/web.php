@@ -21,13 +21,18 @@ Route::get('/pixel.js', [PixelController::class, 'script'])->name('pixel.script'
 
 /*
 |--------------------------------------------------------------------------
-| Shopify OAuth
+| Shopify OAuth + embedded boot
 |--------------------------------------------------------------------------
 */
 Route::prefix('auth')->group(function () {
     Route::get('/install', [ShopifyAuthController::class, 'install'])->name('auth.install');
     Route::get('/callback', [ShopifyAuthController::class, 'callback'])->name('auth.callback');
     Route::get('/login', [ShopifyAuthController::class, 'login'])->name('auth.login');
+
+    // Embedded entry (application_url) + session-token boot. No shopify.request
+    // middleware here — these endpoints ESTABLISH the identity.
+    Route::get('/boot', [ShopifyAuthController::class, 'boot'])->name('auth.boot');
+    Route::post('/token-exchange', [ShopifyAuthController::class, 'tokenExchange'])->name('auth.token-exchange');
 });
 
 /*

@@ -101,6 +101,17 @@ class ApiController extends Controller
         $domain = strtolower((string) $request->input('shop'));
         $shop = $domain ? Shop::where('shopify_domain', $domain)->first() : null;
 
+        // The checkout UI extension doesn't know the shop domain (checkout
+        // sandbox). Resolve the store from a previously recorded Purchase
+        // event for this order instead.
+        if (! $shop) {
+            $orderId = preg_replace('/\D/', '', (string) $request->input('data.order_id'));
+
+            $shop = $orderId
+                ? Shop::whereHas('events', fn ($q) => $q->where('order_id', $orderId))->first()
+                : null;
+        }
+
         if (! $shop || ! $shop->isInstalled()) {
             return response()->json(['ok' => false], 404);
         }

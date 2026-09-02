@@ -22,6 +22,12 @@ class SessionToken
 
         [$headerB64, $payloadB64, $signatureB64] = $parts;
 
+        // Session tokens are always alg=HS256, signed with the app secret.
+        $header = json_decode((string) $this->base64UrlDecode($headerB64), true);
+        if (! is_array($header) || strtolower((string) ($header['alg'] ?? '')) !== 'hs256') {
+            return null;
+        }
+
         $signature = $this->base64UrlDecode($signatureB64);
         $expected = hash_hmac(
             'sha256',
@@ -39,13 +45,22 @@ class SessionToken
             return null;
         }
 
-        if (($payload['aud'] ?? null) !== config('shopify.api_key')) {
+        // `aud` may be a string or an array of audiences.
+        $aud = $payload['aud'] ?? null;
+        $audOk = is_array($aud)
+            ? in_array(config('shopify.api_key'), $aud, true)
+            : $aud === config('shopify.api_key');
+        if (! $audOk) {
             return null;
         }
-        if (($payload['exp'] ?? 0) < time()) {
+
+        // Allow 2 minutes of leeway for clock skew between sandbox clocks.
+        $leeway = 120;
+
+        if (($payload['exp'] ?? 0) < time() - $leeway) {
             return null;
         }
-        if (($payload['nbf'] ?? 0) > time()) {
+        if (($payload['nbf'] ?? 0) > time() + $leeway) {
             return null;
         }
 

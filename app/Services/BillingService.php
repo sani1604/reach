@@ -112,4 +112,52 @@ class BillingService
             $shop->update(['plan' => 'free', 'plan_status' => null]);
         }
     }
+
+    /*
+    |------------------------------------------------------------------
+    | 2026: Shopify App Pricing (managed pricing)
+    |------------------------------------------------------------------
+    | New public apps define plans in the app submission form and Shopify
+    | hosts the plan-selection page — no Billing API call from the app.
+    | Subscription changes arrive as URL params (and, for apps enrolled
+    | before April 28 2026, the app_subscriptions/update webhook). We sync
+    | the authoritative state from GraphQL activeSubscriptions.
+    */
+
+    /**
+     * Reconcile the local plan with Shopify's records. Works for Shopify
+     * App Pricing subscriptions and legacy Billing API subscriptions.
+     */
+    public function syncFromShopify(Shop $shop): void
+    {
+        $subscriptions = $this->client->activeSubscriptions($shop);
+
+        if ($subscriptions === []) {
+            return; // keep local state (covers API hiccups)
+        }
+
+        $active = collect($subscriptions)
+            ->filter(fn ($s) => strtolower((string) ($s['status'] ?? '')) === 'active');
+
+        if ($active->isEmpty()) {
+            $shop->update(['plan' => 'free', 'plan_status' => null]);
+
+            return;
+        }
+
+        // Match the plan by name — "Reach Basic" / "Reach Growth".
+        $plan = 'basic';
+        foreach ($active as $subscription) {
+            $name = strtolower((string) ($subscription['name'] ?? ''));
+            if (str_contains($name, 'growth')) {
+                $plan = 'growth';
+                break;
+            }
+        }
+
+        $shop->update([
+            'plan'        => $plan,
+            'plan_status' => 'active',
+        ]);
+    }
 }

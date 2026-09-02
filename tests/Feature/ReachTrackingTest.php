@@ -193,6 +193,56 @@ class ReachTrackingTest extends TestCase
         $this->assertDatabaseMissing('events', ['order_id' => '99']);
     }
 
+    public function test_privacy_webhooks_are_accepted_and_redact_data(): void
+    {
+        // Seed a visitor holding PII for this customer.
+        $this->shop->visitors()->create([
+            'vid'   => 'visitor-1',
+            'email' => 'buyer@example.com',
+            'phone' => '+911234567890',
+        ]);
+
+        $payload = json_encode([
+            'shop_id'  => 1,
+            'customer' => [
+                'id'    => 99,
+                'email' => 'buyer@example.com',
+            ],
+        ]);
+
+        $headers = [
+            'X-Shopify-Shop-Domain' => 'test-store.myshopify.com',
+            'X-Shopify-Hmac-Sha256' => $this->hmac($payload),
+        ];
+
+        // customers/data_request — must acknowledge 200.
+        $this->postJson('/webhooks', json_decode($payload, true), array_merge($headers, [
+            'X-Shopify-Topic' => 'customers/data_request',
+        ]))->assertOk();
+
+        // customers/redact — deletes the matching visitor rows.
+        $this->postJson('/webhooks', json_decode($payload, true), array_merge($headers, [
+            'X-Shopify-Topic' => 'customers/redact',
+        ]))->assertOk();
+
+        $this->assertDatabaseMissing('visitors', [
+            'shop_id' => $this->shop->id,
+            'vid'     => 'visitor-1',
+        ]);
+
+        // shop/redact — deletes the whole store record.
+        $payload = json_encode(['shop_id' => 1]);
+        $this->postJson('/webhooks', json_decode($payload, true), [
+            'X-Shopify-Topic'       => 'shop/redact',
+            'X-Shopify-Shop-Domain' => 'test-store.myshopify.com',
+            'X-Shopify-Hmac-Sha256' => $this->hmac($payload),
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('shops', [
+            'shopify_domain' => 'test-store.myshopify.com',
+        ]);
+    }
+
     protected function hmac(string $body): string
     {
         return base64_encode(hash_hmac('sha256', $body, 'test-secret', true));

@@ -1,6 +1,10 @@
 # Reach Pixel — web pixel extension (Customer Events).
+#
+# Deployed with `shopify app deploy`. Deploying only REGISTERS the extension
+# on the app — per-store activation happens server-side via the
+# `webPixelCreate` Admin API mutation (see ShopifyClient::ensureWebPixel).
 name = "Reach Pixel"
-uid = "9e523b93-6c4d-06ec-dd96-eb01bd8c29b50b84ebe8"
+uid = "8e586b57-b276-4bed-8ccb-da394acfa108"
 type = "web_pixel"
 runtime_context = "strict"
 
@@ -10,5 +14,5 @@ type = "object"
 [[settings.fields]]
 key = "config"
 type = "single_line_text_field"
-name = "Reach app URL"
-description = "The public URL of your Reach app, e.g. https://your-app-domain.com"
+name = "Reach config (JSON)"
+description = "{\"app_url\":\"https://your-app-domain.com\",\"shop\":\"store.myshopify.com\"} — set automatically by the app at install time"

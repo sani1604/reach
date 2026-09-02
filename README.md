@@ -155,59 +155,128 @@ php artisan reach:health                      # detect stale pixels
 
 ## Connecting a real Shopify app
 
-1. Create a **public/custom app** in the [Shopify Partner Dashboard](https://partners.shopify.com).
-2. Set **App URL** → `https://your-domain.com` and **Allowed redirection URLs** →
-   `https://your-domain.com/auth/callback`, `https://your-domain.com/auth/install`.
-3. Paste credentials into `.env`:
+Reach follows the **2026 Shopify embedded-app architecture**: Shopify managed
+installation + token exchange (no OAuth redirects inside the admin), App Bridge
+session tokens for every request, expiring offline access tokens, and
+GraphQL-first Admin API calls.
 
-   ```dotenv
-   SHOPIFY_API_KEY=your-client-id
-   SHOPIFY_API_SECRET=your-client-secret
-   SHOPIFY_APP_HANDLE=your-app-handle     # used for the post-install admin redirect
+1. Link the repo to your app in the Dev Dashboard / Partner Dashboard:
+
+   ```bash
+   shopify app config link           # binds shopify.app.reach-openai-ads-pixel.toml
    ```
 
-4. Tunnel for local dev: `ngrok http 8000`, then update `APP_URL` and the
-   Partner-Dashboard URLs to the ngrok host.
-5. Install from a store: `/auth/install?shop=your-store.myshopify.com`.
+   The toml is the source of truth for the app URL, redirect URLs, scopes and
+   webhook subscriptions (including the mandatory privacy topics).
+
+2. Deploy config + extensions:
+
+   ```bash
+   shopify app deploy
+   ```
+
+   Deploying **registers** the extensions. The app then **activates** the web
+   pixel per store automatically (`webPixelCreate` — see
+   `ShopifyClient::ensureWebPixel()`), so no manual Customer Events setup is
+   needed.
+
+3. Point the app at your Laravel deployment (`.env`):
+
+   ```dotenv
+   APP_URL=https://your-domain.com
+   SHOPIFY_API_KEY=your-client-id
+   SHOPIFY_API_SECRET=your-client-secret
+   SHOPIFY_APP_HANDLE=your-app-handle   # admin URL: /apps/{handle}
+   ```
+
+4. Production cookies (the admin runs your app in a third-party iframe):
+
+   ```dotenv
+   SESSION_SAME_SITE=none
+   SESSION_SECURE_COOKIE=true
+   SESSION_PARTITIONED_COOKIE=true
+   ```
+
+5. Install from a store: `https://your-domain.com/auth/install?shop=your-store.myshopify.com`
+   or directly from the app listing / Dev Dashboard (managed installation).
+
+### How the embedded flow works
+
+```
+Shopify admin iframe ──loads──▶ application_url (?shop=&host=)
+        │                             │
+        │                    boot page (App Bridge 4)
+        │                             │  shopify.idToken()
+        │                             ▼
+        │                    POST /auth/token-exchange
+        │                      ├─ installed → ok
+        │                      └─ not installed → token exchange
+        │                             (offline token, expiring)
+        │                             │
+        ◀──navigate /dashboard?id_token=…
+```
+
+Every page navigation and fetch carries a fresh App Bridge session token
+(`Authorization: Bearer` or `?id_token=`), so the app keeps working even when
+the browser blocks third-party cookies. Sessions never redirect the merchant
+to an install screen from inside the iframe — the boot page re-establishes
+the session instead. The top-level OAuth grant flow (`/auth/install`) remains
+as the fallback for non-managed installs.
+
+### 2026 policy checklist
+
+| Requirement | Status |
+|---|---|
+| Latest stable Admin API (2026-07, 12-month support) | ✅ default `SHOPIFY_API_VERSION` + toml |
+| Expiring offline access tokens + refresh (mandatory for new public apps; all public apps by Jan 1 2027) | ✅ `expiring=1`, `refresh_token` rotation, `reach:refresh-tokens` daily cron |
+| Token exchange / managed installation for embedded apps | ✅ `/auth/token-exchange`, `use_legacy_install_flow = false` |
+| Session tokens on every embedded request (cookie-independent) | ✅ Bearer header, `?id_token=`, App Bridge 4 |
+| Mandatory privacy webhooks (`customers/data_request`, `customers/redact`, `shop/redact`) | ✅ toml `compliance_topics` + handlers in `WebhookController` |
+| Mandatory webhooks (`app/uninstalled`, `app_subscriptions/update`) | ✅ toml subscriptions + HMAC-verified `/webhooks` |
+| Web pixel activated per store (`webPixelCreate`) | ✅ `PostInstallSetup` job |
+| CSP `frame-ancestors` for the admin iframe | ✅ `SetEmbedFrameHeaders` middleware |
+| GraphQL-first Admin API (REST is legacy) | ✅ billing query + web pixel via GraphQL; REST kept only where GraphQL has no equivalent |
+| Billing — Shopify App Pricing (managed pricing) | ✅ plan synced from `activeSubscriptions`; legacy Billing API flow still available |
 
 ### Shipping the extensions
 
-Two extensions ship with Reach:
+Two extensions ship with Reach (each in its own folder, unique handle + uid —
+duplicates across folders will make `shopify app deploy` skip them):
 
-- **`extensions/reach-pixel/`** — the web pixel (Customer Events) that loads `pixel.js`
-  and maps Shopify's standard events onto the OpenAI Ads taxonomy.
-- **`extensions/reach-checkout/`** — a checkout UI extension (`purchase.thank-you` target)
-  that hands the confirmed order id back to the pixel for click-ID enrichment.
+- **`extensions/reach-pixel/`** — the web pixel (Customer Events). Runs in
+  Shopify's strict sandbox, maps the standard events to the OpenAI Ads
+  taxonomy, and forwards everything with `fetch()` directly to
+  `/api/track` + `/api/enrich` (no script injection).
+- **`extensions/reach-order-enrichment/`** — a checkout UI extension
+  (`purchase.thank-you.block.render`) that forwards the confirmed order id to
+  `/api/enrich` so server-side Purchases gain cross-device matching signals.
 
 With the Shopify CLI:
 
 ```bash
-shopify app config link           # link to your app
-shopify app deploy                # uploads the extensions
+shopify app deploy
 ```
 
-**Important:** replace the `PIXEL_URL` placeholder in
-`extensions/reach-pixel/src/index.js` with your deployed app URL (e.g.
-`https://your-domain.com/pixel.js`). Adjust the `analytics.subscribe` field names to the
-live Customer Events payloads after testing in a development store.
-
----
+After deploy, the app activates the web pixel automatically on the next
+install/boot (`webPixelCreate` with the app URL + shop domain in the pixel
+settings). To re-check an existing store: Settings shows the Pixel ID once
+activation succeeds.
 
 ## Environment variables
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` | App credentials | — |
-| `SHOPIFY_API_VERSION` | Admin API version | `2026-01` |
-| `SHOPIFY_APP_SCOPES` | OAuth scopes | `read_orders,read_products` |
-| `SHOPIFY_APP_HANDLE` | App handle for admin deep links | `reach` |
+| `SHOPIFY_API_VERSION` | Admin API version (latest stable) | `2026-07` |
+| `SHOPIFY_APP_SCOPES` | OAuth scopes (`write_pixels` activates the web pixel) | `read_orders,read_products,write_pixels` |
+| `SHOPIFY_APP_HANDLE` | App handle for admin deep links (`/apps/{handle}`) | `reach-openai-ads-pixel` |
 | `SHOPIFY_EMBEDDED` | Load App Bridge + session-token JS in the admin | `true` |
 | `OPENAI_CAPI_URL` | Conversions API endpoint (per-shop override in Settings) | `https://capi.openai.com/v1/events` |
 | `OPENAI_CAPI_TOKEN` | Fallback CAPI token (per-shop token preferred) | — |
 | `OPENAI_BROWSER_PIXEL_URL` | Browser pixel loader origin | `https://pixel.openai.com` |
 | `PLAN_BASIC_PRICE` / `PLAN_BASIC_CURRENCY` | Basic tier price | `499` / `INR` |
 | `PLAN_GROWTH_PRICE` / `PLAN_GROWTH_CURRENCY` | Growth tier price | `1999` / `INR` |
-| `SESSION_SAME_SITE` / `SESSION_SECURE_COOKIE` | Embedded-app cookies | `lax` / `false` |
+| `SESSION_SAME_SITE` / `SESSION_SECURE_COOKIE` / `SESSION_PARTITIONED_COOKIE` | Embedded-app cookies (set `none` / `true` / `true` in production) | `lax` / `false` / `false` |
 | `SSE_MAX_SECONDS` / `SSE_INTERVAL` | Realtime feed runtime / poll interval | `55` / `2` |
 
 ---
@@ -229,14 +298,16 @@ Reach is designed to run on cheap shared hosting:
    * * * * * cd /home/USER/public_html && php artisan queue:work --stop-when-empty --max-time=55 >> storage/logs/worker.log 2>&1
    ```
 
-5. Schedule the health check daily:
+5. Run the scheduler every minute — it refreshes Shopify's expiring offline
+   tokens daily (`reach:refresh-tokens`) and runs the pixel health check:
 
    ```cron
-   0 9 * * * cd /home/USER/public_html && php artisan reach:health >> storage/logs/health.log 2>&1
+   * * * * * cd /home/USER/public_html && php artisan schedule:run >> /dev/null 2>&1
    ```
 
-6. **Production cookies:** set `SESSION_SAME_SITE=none` and `SESSION_SECURE_COOKIE=true`
-   (requires HTTPS) so the embedded admin keeps your session.
+6. **Production cookies:** set `SESSION_SAME_SITE=none`, `SESSION_SECURE_COOKIE=true`
+   and `SESSION_PARTITIONED_COOKIE=true` (requires HTTPS) so the embedded admin
+   keeps your session even in third-party-cookie-blocking browsers.
 7. Configure `MAIL_*` (SMTP) to enable the Basic-plan pixel-break email alerts.
 
 ---

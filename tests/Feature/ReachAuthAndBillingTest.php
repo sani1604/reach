@@ -49,10 +49,21 @@ class ReachAuthAndBillingTest extends TestCase
 
     public function test_expired_session_token_is_rejected(): void
     {
-        $token = $this->sessionToken(['exp' => time() - 100, 'nbf' => time() - 200]);
+        // Beyond the 2-minute clock-skew leeway.
+        $token = $this->sessionToken(['exp' => time() - 500, 'nbf' => time() - 600]);
 
         $this->get('/dashboard', ['Authorization' => 'Bearer '.$token])
-            ->assertRedirect(route('auth.install'));
+            ->assertRedirect(route('auth.boot', [
+                'shop' => 'test-store.myshopify.com',
+                'to'   => '/dashboard',
+            ]));
+    }
+
+    public function test_id_token_query_param_authenticates_page_navigation(): void
+    {
+        $this->get('/settings?shop=test-store.myshopify.com&id_token='.$this->sessionToken())
+            ->assertOk()
+            ->assertSee('Conversions API');
     }
 
     public function test_token_with_wrong_audience_is_rejected(): void
@@ -155,21 +166,46 @@ class ReachAuthAndBillingTest extends TestCase
 
     /* ---------- OAuth Install & Callback Flow ---------- */
 
-    public function test_oauth_install_sets_session_state_and_redirects(): void
+    public function test_oauth_install_sets_session_state_and_renders_redirect_page(): void
     {
-        $response = $this->get('/auth/install?shop=test-store.myshopify.com');
+        // The authorize navigation must happen top-level (JS bounce page) —
+        // OAuth redirects are blocked inside the admin iframe.
+        $response = $this->get('/auth/install?shop=new-store.myshopify.com');
 
-        $response->assertRedirect();
+        $response->assertOk()
+            ->assertSee('admin/oauth/authorize', false)
+            ->assertSee('window.top', false);
+
         $this->assertNotNull(session('shopify.state'));
-        $this->assertEquals('test-store.myshopify.com', session('shopify.shop'));
+        $this->assertEquals('new-store.myshopify.com', session('shopify.shop'));
+    }
+
+    public function test_oauth_install_skips_consent_for_installed_shop(): void
+    {
+        $this->get('/auth/install?shop=test-store.myshopify.com')
+            ->assertRedirect(route('dashboard', ['shop' => 'test-store.myshopify.com']));
     }
 
     public function test_oauth_callback_succeeds_with_valid_state_and_hmac(): void
     {
         Http::fake([
-            'test-store.myshopify.com/admin/oauth/access_token' => Http::response(['access_token' => 'shpca_newtoken'], 200),
+            'test-store.myshopify.com/admin/oauth/access_token' => Http::response([
+                'access_token'            => 'shpca_newtoken',
+                'scope'                   => 'read_orders,read_products,write_pixels',
+                'expires_in'              => 3600,
+                'refresh_token'           => 'shpca_refresh',
+                'refresh_token_expires_in' => 7776000,
+            ], 200),
             'test-store.myshopify.com/admin/api/*/webhooks.json' => Http::response(['webhooks' => []], 200),
             'test-store.myshopify.com/admin/api/*/webhooks' => Http::response([], 201),
+            'test-store.myshopify.com/admin/api/*/graphql.json' => Http::response([
+                'data' => [
+                    'webPixelCreate' => [
+                        'userErrors' => [],
+                        'webPixel'   => ['id' => 'gid://shopify/WebPixelActivation/42'],
+                    ],
+                ],
+            ], 200),
         ]);
 
         $state = 'test-state-123';
@@ -185,10 +221,17 @@ class ReachAuthAndBillingTest extends TestCase
         $response = $this->withSession(['shopify.state' => $state, 'shopify.shop' => 'test-store.myshopify.com'])
             ->get('/auth/callback?'.$rawQuery);
 
-        $response->assertRedirect('https://test-store.myshopify.com/admin/apps/reach/dashboard');
+        // The admin app URL has no sub-path — /apps/{handle}/dashboard does
+        // not exist and 404s inside the Shopify admin.
+        $response->assertOk()
+            ->assertSee('admin/apps/reach-openai-ads-pixel', false)
+            ->assertDontSee('/apps/reach/dashboard', false);
+
         $this->assertDatabaseHas('shops', [
             'shopify_domain' => 'test-store.myshopify.com',
             'access_token'   => 'shpca_newtoken',
+            'refresh_token'  => 'shpca_refresh',
+            'pixel_id'       => 'gid://shopify/WebPixelActivation/42',
         ]);
     }
 
@@ -221,6 +264,91 @@ class ReachAuthAndBillingTest extends TestCase
         $response->assertStatus(403);
     }
 
+    /* ---------- Embedded boot + token exchange (managed installation) ---------- */
+
+    public function test_embedded_boot_renders_for_installed_shop(): void
+    {
+        $this->get('/?shop=test-store.myshopify.com&host='.base64_encode('admin.shopify.com/store/test-store'))
+            ->assertOk()
+            ->assertSee('app-bridge.js', false)
+            ->assertSee('token-exchange', false);
+    }
+
+    public function test_token_exchange_rejects_invalid_token(): void
+    {
+        $this->postJson('/auth/token-exchange', [
+            'shop' => 'test-store.myshopify.com',
+        ], ['Authorization' => 'Bearer not-a-jwt'])
+            ->assertStatus(401)
+            ->assertJson(['ok' => false, 'reason' => 'invalid_token']);
+    }
+
+    public function test_token_exchange_rejects_shop_mismatch(): void
+    {
+        // Token is valid but belongs to a different store.
+        $this->postJson('/auth/token-exchange', [
+            'shop' => 'other-store.myshopify.com',
+        ], ['Authorization' => 'Bearer '.$this->sessionToken()])
+            ->assertStatus(401);
+    }
+
+    public function test_token_exchange_reports_not_installed_for_unknown_shop(): void
+    {
+        Http::fake([
+            'fresh-store.myshopify.com/admin/oauth/access_token' => Http::response(['error' => 'not_installed'], 400),
+        ]);
+
+        $token = $this->sessionToken([], 'fresh-store.myshopify.com');
+
+        $this->postJson('/auth/token-exchange', [
+            'shop' => 'fresh-store.myshopify.com',
+        ], ['Authorization' => 'Bearer '.$token])
+            ->assertOk()
+            ->assertJson(['ok' => false, 'reason' => 'not_installed']);
+    }
+
+    public function test_token_exchange_installs_shop_with_expiring_tokens(): void
+    {
+        Http::fake([
+            'fresh-store.myshopify.com/admin/oauth/access_token' => Http::response([
+                'access_token'             => 'shpca_exchanged',
+                'scope'                    => 'read_orders,read_products,write_pixels',
+                'expires_in'               => 3600,
+                'refresh_token'            => 'shpca_refresh_exchanged',
+                'refresh_token_expires_in' => 7776000,
+            ], 200),
+            'fresh-store.myshopify.com/admin/api/*/webhooks.json' => Http::response(['webhooks' => []], 200),
+            'fresh-store.myshopify.com/admin/api/*/webhooks' => Http::response([], 201),
+            'fresh-store.myshopify.com/admin/api/*/graphql.json' => Http::response([
+                'data' => [
+                    'webPixelCreate' => [
+                        'userErrors' => [],
+                        'webPixel'   => ['id' => 'gid://shopify/WebPixelActivation/7'],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $token = $this->sessionToken([], 'fresh-store.myshopify.com');
+
+        $this->postJson('/auth/token-exchange', [
+            'shop' => 'fresh-store.myshopify.com',
+        ], ['Authorization' => 'Bearer '.$token])
+            ->assertOk()
+            ->assertJson(['ok' => true]);
+
+        $this->assertDatabaseHas('shops', [
+            'shopify_domain' => 'fresh-store.myshopify.com',
+            'access_token'   => 'shpca_exchanged',
+            'refresh_token'  => 'shpca_refresh_exchanged',
+            'pixel_id'       => 'gid://shopify/WebPixelActivation/7',
+        ]);
+
+        $shop = Shop::where('shopify_domain', 'fresh-store.myshopify.com')->first();
+        $this->assertNotNull($shop->token_expires_at);
+        $this->assertTrue($shop->token_expires_at->isFuture());
+    }
+
     /* ---------- helpers ---------- */
 
     protected function oauthQueryHmac(array $params): string
@@ -235,12 +363,14 @@ class ReachAuthAndBillingTest extends TestCase
         return $this->withSession(['shop' => $this->shop->shopify_domain]);
     }
 
-    protected function sessionToken(array $overrides = []): string
+    protected function sessionToken(array $overrides = [], ?string $shop = null): string
     {
+        $shop = $shop ?: 'test-store.myshopify.com';
+
         $header = $this->b64(json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
         $payload = $this->b64(json_encode(array_merge([
-            'iss'  => 'https://test-store.myshopify.com/admin',
-            'dest' => 'https://test-store.myshopify.com',
+            'iss'  => 'https://'.$shop.'/admin',
+            'dest' => 'https://'.$shop,
             'aud'  => 'test-api-key',
             'sub'  => '1',
             'exp'  => time() + 3600,

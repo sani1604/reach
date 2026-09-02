@@ -11,6 +11,15 @@ class BillingController extends Controller
     {
         $shop = $request->attributes->get('shop');
 
+        // Sync the plan from Shopify (covers Shopify App Pricing / managed
+        // pricing subscriptions, which don't send us a webhook).
+        try {
+            app(BillingService::class)->syncFromShopify($shop);
+            $shop->refresh();
+        } catch (\Throwable $e) {
+            // Billing page must render even when Shopify is unreachable.
+        }
+
         return view('billing', compact('shop'));
     }
 
@@ -28,7 +37,22 @@ class BillingController extends Controller
         }
 
         $service = app(BillingService::class);
-        $charge = $service->createCharge($shop, $plan);
+
+        try {
+            $charge = $service->createCharge($shop, $plan);
+        } catch (\Throwable $e) {
+            // Apps on 2026 Shopify App Pricing (managed pricing) can't create
+            // charges themselves — plan selection happens on Shopify's page.
+            logger()->warning('Legacy billing createCharge failed', [
+                'shop'  => $shop->shopify_domain,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with(
+                'error',
+                'This app uses Shopify App Pricing — pick the plan on the Pricing page in the app listing, then reopen Billing to see it applied.'
+            );
+        }
 
         if (! $charge) {
             return back()->with('error', 'Could not start the upgrade. Please try again.');
