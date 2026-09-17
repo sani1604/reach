@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Throwable;
 
 class SendCapiEvent implements ShouldQueue
 {
@@ -17,6 +18,9 @@ class SendCapiEvent implements ShouldQueue
     public int $tries = 4;
 
     public array $backoff = [30, 60, 120, 300];
+
+    /** Cap exception-driven retries so a bad payload can't thrash the worker. */
+    public int $maxExceptions = 3;
 
     public function __construct(
         public int $shopId,
@@ -32,7 +36,17 @@ class SendCapiEvent implements ShouldQueue
             return;
         }
 
-        $result = $capi->send($shop, $this->event);
+        try {
+            $result = $capi->send($shop, $this->event);
+        } catch (Throwable $e) {
+            logger()->warning('OpenAI CAPI client threw', [
+                'shop_id'    => $this->shopId,
+                'event_type' => $this->event['type'] ?? null,
+                'error'      => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+
         $status = $result['status'] ?? null;
         $error = $result['error'] ?? null;
         $configError = in_array($error, ['missing_token', 'missing_pixel_id', 'empty_events'], true);
@@ -54,5 +68,15 @@ class SendCapiEvent implements ShouldQueue
                 'url'        => $result['url'] ?? null,
             ]);
         }
+    }
+
+    public function failed(?Throwable $e): void
+    {
+        logger()->warning('SendCapiEvent permanently failed', [
+            'shop_id'    => $this->shopId,
+            'event_type' => $this->event['type'] ?? null,
+            'event_id'   => $this->event['id'] ?? null,
+            'error'      => $e?->getMessage(),
+        ]);
     }
 }

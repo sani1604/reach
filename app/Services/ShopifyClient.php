@@ -197,22 +197,62 @@ class ShopifyClient
      */
     public function subscribeWebhooks(Shop $shop): int
     {
-        $existing = collect($this->get($shop, '/webhooks.json')->json('webhooks', []))
-            ->pluck('topic')->all();
+        try {
+            $response = $this->get($shop, '/webhooks.json');
+        } catch (Throwable $e) {
+            logger()->warning('Listing webhooks failed', [
+                'shop'  => $shop->shopify_domain,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
+
+        if (! $response->successful()) {
+            logger()->warning('Listing webhooks returned non-2xx', [
+                'shop'   => $shop->shopify_domain,
+                'status' => $response->status(),
+                'body'   => $response->json(),
+            ]);
+
+            return 0;
+        }
+
+        $existing = collect($response->json('webhooks', []))->pluck('topic')->all();
 
         $created = 0;
         foreach (config('shopify.webhooks', []) as $topic) {
             if (in_array($topic, $existing, true)) {
                 continue;
             }
-            $this->post($shop, '/webhooks.json', [
-                'webhook' => [
-                    'topic'   => $topic,
-                    'address' => route('webhooks'),
-                    'format'  => 'json',
-                ],
-            ]);
-            $created++;
+
+            try {
+                $res = $this->post($shop, '/webhooks.json', [
+                    'webhook' => [
+                        'topic'   => $topic,
+                        'address' => route('webhooks'),
+                        'format'  => 'json',
+                    ],
+                ]);
+
+                if ($res->successful() || $res->status() === 422) {
+                    // 422 usually means already subscribed under another address.
+                    $created++;
+                } else {
+                    logger()->warning('Webhook subscribe failed', [
+                        'shop'   => $shop->shopify_domain,
+                        'topic'  => $topic,
+                        'status' => $res->status(),
+                        'body'   => $res->json(),
+                    ]);
+                }
+            } catch (Throwable $e) {
+                logger()->warning('Webhook subscribe threw', [
+                    'shop'  => $shop->shopify_domain,
+                    'topic' => $topic,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $created;

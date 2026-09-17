@@ -71,6 +71,8 @@ class PostInstallSetup implements ShouldQueue
         try {
             $client->subscribeWebhooks($shop);
         } catch (Throwable $e) {
+            // Never let webhook subscription kill the worker — pixel
+            // activation is the critical path. Webhooks can retry later.
             logger()->warning('Webhook subscription failed', [
                 'shop'  => $shop->shopify_domain,
                 'error' => $e->getMessage(),
