@@ -18,6 +18,15 @@
     @if (session('test_error'))
         <div class="alert error">{{ session('test_error') }}</div>
     @endif
+    @if (session('scope_error'))
+        <div class="alert error" style="flex-wrap:wrap;">
+            <div style="flex:1;min-width:220px;">{{ session('scope_error') }}</div>
+            <form method="POST" action="{{ route('settings.update-permissions') }}" style="margin-left:auto;">
+                @csrf
+                <button class="btn btn-primary btn-sm" type="submit">Update permissions</button>
+            </form>
+        </div>
+    @endif
     @if ($errors->any())
         <div class="alert error">
             @foreach ($errors->all() as $error)
@@ -26,20 +35,47 @@
         </div>
     @endif
 
-    @unless ($shop->webPixelActive())
+    @php
+        $missing = $missingPixelScopes ?? $shop->missingPixelScopes();
+        $needsScopes = ! $shop->webPixelActive() && count($missing) > 0;
+    @endphp
+
+    @if ($needsScopes)
+        <div class="alert error" style="flex-wrap:wrap;">
+            <div style="flex:1;min-width:240px;">
+                <strong>Missing Shopify scopes for the web pixel.</strong>
+                <div style="margin-top:6px;">
+                    <code>webPixelCreate</code> needs both
+                    <span class="mono">write_pixels</span> and
+                    <span class="mono">read_customer_events</span>.
+                    Your store token is missing:
+                    <strong class="mono">{{ implode(', ', $missing) }}</strong>.
+                </div>
+                <div class="hint" style="margin-top:8px;color:inherit;">
+                    1) Deploy app config: <span class="mono">shopify app deploy</span>
+                    (scopes must include <span class="mono">read_customer_events</span>)<br>
+                    2) Click <strong>Update permissions</strong> so this store re-grants the new scopes<br>
+                    3) Then click <strong>Reconnect pixel</strong>
+                </div>
+            </div>
+            <form method="POST" action="{{ route('settings.update-permissions') }}" style="margin-left:auto;">
+                @csrf
+                <button class="btn btn-primary btn-sm" type="submit">Update permissions</button>
+            </form>
+        </div>
+    @elseif (! $shop->webPixelActive())
         <div class="alert error">
             <div>
                 <strong>Shopify pixel is disconnected.</strong>
-                Customer Events are not running on your storefront — that is why Page views and other funnel steps stay at 0.
-                Click <strong>Reconnect pixel</strong> below. If it still fails, deploy the extension with
-                <span class="mono">shopify app deploy</span> and make sure the app has the <span class="mono">write_pixels</span> scope.
+                Customer Events are not running on your storefront — that is why Page views stay at 0.
+                Click <strong>Reconnect pixel</strong> below.
             </div>
             <form method="POST" action="{{ route('settings.reconnect-pixel') }}" style="margin-left:auto;">
                 @csrf
                 <button class="btn btn-primary btn-sm" type="submit">Reconnect pixel</button>
             </form>
         </div>
-    @endunless
+    @endif
 
     <div class="card mb-16">
         <h3>OpenAI Ads credentials</h3>
@@ -146,7 +182,22 @@
                         <span class="mono" style="margin-left:8px;font-size:11px;">{{ \Illuminate\Support\Str::limit($shop->web_pixel_id, 36) }}</span>
                     @else
                         <span class="tag amber">Disconnected</span>
-                        <div class="hint" style="margin-top:4px;">This is what Shopify admin shows as “Pixels: Disconnected”. Reconnect to start tracking.</div>
+                        <div class="hint" style="margin-top:4px;">This is what Shopify admin shows as “Pixels: Disconnected”.</div>
+                    @endif
+                </td>
+            </tr>
+            <tr>
+                <td>Shopify scopes on token</td>
+                <td>
+                    @if ($shop->hasPixelScopes())
+                        <span class="tag green">write_pixels + read_customer_events</span>
+                    @elseif (count($missing) > 0)
+                        <span class="tag amber">Missing {{ implode(', ', $missing) }}</span>
+                    @else
+                        <span class="tag amber">Unknown — re-authorize once</span>
+                    @endif
+                    @if (!empty($grantedScopes) || $shop->token_scopes)
+                        <div class="mono hint" style="margin-top:4px;">{{ $shop->token_scopes ?: '—' }}</div>
                     @endif
                 </td>
             </tr>
@@ -167,6 +218,12 @@
                     {{ $shop->webPixelActive() ? 'Refresh pixel settings' : 'Reconnect pixel' }}
                 </button>
             </form>
+            @if ($needsScopes || session('needs_reauth'))
+                <form method="POST" action="{{ route('settings.update-permissions') }}">
+                    @csrf
+                    <button class="btn btn-ghost btn-sm" type="submit">Update permissions</button>
+                </form>
+            @endif
         </div>
 
         <p class="hint mt-16">

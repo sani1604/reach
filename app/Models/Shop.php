@@ -136,4 +136,62 @@ class Shop extends Model
     {
         return ! empty($this->advertiser_api_key);
     }
+
+    /**
+     * Scopes currently granted on the stored offline token.
+     *
+     * @return list<string>
+     */
+    public function grantedScopes(): array
+    {
+        if (! $this->token_scopes) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) $this->token_scopes)
+        )));
+    }
+
+    /**
+     * True when the offline token includes every scope needed for webPixelCreate.
+     */
+    public function hasPixelScopes(): bool
+    {
+        $required = config('shopify.pixel_scopes', ['write_pixels', 'read_customer_events']);
+        $granted = $this->grantedScopes();
+
+        // Legacy installs may not have token_scopes recorded — don't block
+        // reconnect attempts; Shopify will still enforce at the API.
+        if ($granted === []) {
+            return false;
+        }
+
+        foreach ($required as $scope) {
+            if (! in_array($scope, $granted, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function missingPixelScopes(): array
+    {
+        $required = config('shopify.pixel_scopes', ['write_pixels', 'read_customer_events']);
+        $granted = $this->grantedScopes();
+
+        if ($granted === []) {
+            return $required;
+        }
+
+        return array_values(array_filter(
+            $required,
+            fn ($scope) => ! in_array($scope, $granted, true)
+        ));
+    }
 }

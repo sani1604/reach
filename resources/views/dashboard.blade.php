@@ -39,7 +39,9 @@
                         · {{ number_format((int) ($t['today'] ?? 0)) }} events today
                     @else
                         No events yet
-                        @if (!($t['web_pixel'] ?? false))
+                        @if (!empty($t['missing_scopes']) && !($t['web_pixel'] ?? false))
+                            — missing scopes <span class="mono">{{ implode(', ', $t['missing_scopes']) }}</span>. Click <strong>Update permissions</strong>, then Reconnect pixel.
+                        @elseif (!($t['web_pixel'] ?? false))
                             — Shopify pixel is disconnected. Open Settings and click <strong>Reconnect pixel</strong>.
                         @elseif (!($t['capi'] ?? false))
                             — add your OpenAI Pixel ID + Conversions API key in Settings.
@@ -50,7 +52,12 @@
                 </div>
             </div>
             <div class="tracking-actions">
-                @if (!($t['web_pixel'] ?? false))
+                @if (!empty($t['missing_scopes']) && !($t['web_pixel'] ?? false) && ($t['has_pixel_scopes'] ?? true) === false)
+                    <form method="POST" action="{{ route('settings.update-permissions') }}">
+                        @csrf
+                        <button class="btn btn-primary btn-sm" type="submit">Update permissions</button>
+                    </form>
+                @elseif (!($t['web_pixel'] ?? false))
                     <form method="POST" action="{{ route('settings.reconnect-pixel') }}">
                         @csrf
                         <button class="btn btn-primary btn-sm" type="submit">Reconnect pixel</button>

@@ -50,6 +50,8 @@ Route::middleware('shopify.request')->group(function () {
     Route::post('/settings/test', [SettingsController::class, 'testCapi'])->name('settings.test');
     Route::post('/settings/reconnect-pixel', [SettingsController::class, 'reconnectPixel'])
         ->name('settings.reconnect-pixel');
+    Route::post('/settings/update-permissions', [SettingsController::class, 'updatePermissions'])
+        ->name('settings.update-permissions');
 
     Route::get('/billing', [BillingController::class, 'index'])->name('billing');
     Route::post('/billing/upgrade', [BillingController::class, 'upgrade'])->name('billing.upgrade');

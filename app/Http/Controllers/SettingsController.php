@@ -16,11 +16,9 @@ class SettingsController extends Controller
     {
         $shop = $request->attributes->get('shop');
 
-        // Self-heal: if the store is installed but the Customer Events pixel
-        // was never activated (common when the queue worker was offline at
-        // install time), try once on page load so the merchant doesn't stay
-        // stuck on "Pixels: Disconnected".
-        if ($shop->isInstalled() && ! $shop->webPixelActive()) {
+        // Self-heal only when scopes look sufficient — otherwise Shopify just
+        // returns Access denied and we spam logs on every Settings load.
+        if ($shop->isInstalled() && ! $shop->webPixelActive() && $shop->hasPixelScopes()) {
             try {
                 PostInstallSetup::runNow($shop);
                 $shop = $shop->fresh() ?? $shop;
@@ -32,7 +30,11 @@ class SettingsController extends Controller
             }
         }
 
-        return view('settings', compact('shop'));
+        return view('settings', [
+            'shop'              => $shop,
+            'missingPixelScopes'=> $shop->missingPixelScopes(),
+            'grantedScopes'     => $shop->grantedScopes(),
+        ]);
     }
 
     public function save(Request $request)
@@ -95,6 +97,17 @@ class SettingsController extends Controller
             return back()->with('test_error', 'Store is not installed — reinstall the app first.');
         }
 
+        // Detect missing scopes BEFORE calling Shopify so the merchant gets a
+        // clear "update permissions" action instead of a raw GraphQL error.
+        $missing = $shop->missingPixelScopes();
+        if ($missing !== [] && $shop->grantedScopes() !== []) {
+            return back()->with(
+                'scope_error',
+                'Your store token is missing required scopes: '.implode(', ', $missing)
+                .'. Update app permissions so Shopify grants write_pixels + read_customer_events, then click Reconnect pixel again.'
+            )->with('needs_reauth', true);
+        }
+
         try {
             $outcome = PostInstallSetup::runNow($shop->fresh());
         } catch (Throwable $e) {
@@ -111,11 +124,52 @@ class SettingsController extends Controller
             );
         }
 
+        $error = (string) ($outcome['error'] ?? 'unknown');
+        $looksLikeScope = str_contains(strtolower($error), 'access denied')
+            || str_contains(strtolower($error), 'write_pixels')
+            || str_contains(strtolower($error), 'read_customer_events')
+            || str_contains(strtolower($error), 'access scope');
+
+        if ($looksLikeScope) {
+            return back()->with(
+                'scope_error',
+                'Shopify denied webPixelCreate: '.$error
+                .' — the offline token still lacks write_pixels + read_customer_events. '
+                .'Deploy scopes (`shopify app deploy`), then update permissions / reinstall once so the store re-grants them.'
+            )->with('needs_reauth', true);
+        }
+
         return back()->with(
             'test_error',
-            'Could not activate the web pixel: '.($outcome['error'] ?? 'unknown')
-            .'. Make sure the Reach Pixel extension is deployed (`shopify app deploy`) and the app has the write_pixels scope.'
+            'Could not activate the web pixel: '.$error
+            .'. Make sure the Reach Pixel extension is deployed (`shopify app deploy`).'
         );
+    }
+
+    /**
+     * Force a top-level OAuth re-authorize so the store grants the latest
+     * scopes from shopify.app.toml (write_pixels + read_customer_events).
+     */
+    public function updatePermissions(Request $request)
+    {
+        $shop = $request->attributes->get('shop');
+        $domain = $shop->shopify_domain;
+
+        // Clear the cached offline token so the next OAuth callback replaces it
+        // with a token that includes the new scopes. Keep OpenAI credentials.
+        $shop->update([
+            'access_token'              => null,
+            'refresh_token'             => null,
+            'token_expires_at'          => null,
+            'refresh_token_expires_at'  => null,
+            'token_scopes'              => null,
+            'web_pixel_id'              => null,
+            'uninstalled_at'            => null,
+        ]);
+
+        session()->forget('shop');
+
+        return redirect()->route('auth.install', ['shop' => $domain]);
     }
 
     /**

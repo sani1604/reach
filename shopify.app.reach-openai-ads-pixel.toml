@@ -23,10 +23,14 @@ embedded = true
 automatically_update_urls_on_dev = true
 
 [access_scopes]
-# write_pixels is required to activate the Customer Events web pixel after
-# install (webPixelCreate). Scope changes are handled by Shopify managed
-# installation — no re-auth redirect needed.
-scopes = "read_orders,read_products,write_pixels"
+# webPixelCreate requires BOTH write_pixels AND read_customer_events
+# (Shopify returns Access denied without the second scope even when
+# write_pixels is present). After changing scopes, run:
+#   shopify app deploy
+# then open the app on the store so Shopify grants the updated permissions
+# (or uninstall + reinstall once). Existing offline tokens keep the OLD
+# scope list until the merchant re-approves.
+scopes = "read_orders,read_products,write_pixels,read_customer_events"
 use_legacy_install_flow = false
 
 [auth]

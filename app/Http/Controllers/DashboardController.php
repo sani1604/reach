@@ -19,10 +19,9 @@ class DashboardController extends Controller
         $shop = $request->attributes->get('shop');
         $since = now()->subDays(30);
 
-        // Self-heal disconnected Customer Events pixel (Shopify admin shows
-        // "Pixels: Disconnected" when webPixelCreate never ran). Best-effort —
-        // never block the dashboard if Shopify is slow.
-        if ($shop->isInstalled() && ! $shop->webPixelActive()) {
+        // Self-heal only when scopes are present — otherwise Shopify returns
+        // Access denied on every dashboard load.
+        if ($shop->isInstalled() && ! $shop->webPixelActive() && $shop->hasPixelScopes()) {
             try {
                 \App\Jobs\PostInstallSetup::runNow($shop);
                 $shop = $shop->fresh() ?? $shop;
@@ -68,13 +67,15 @@ class DashboardController extends Controller
 
         $lastEventAt = $shop->events()->max('occurred_at');
         $tracking = [
-            'web_pixel'     => $shop->webPixelActive(),
-            'openai_pixel'  => $shop->pixelConfigured(),
-            'capi'          => $shop->capiReady(),
-            'active'        => $shop->webPixelActive() && $shop->capiReady(),
-            'last_event_at' => $lastEventAt ? \Carbon\Carbon::parse($lastEventAt) : null,
-            'today'         => $todayCount,
-            'counts'        => [
+            'web_pixel'       => $shop->webPixelActive(),
+            'openai_pixel'    => $shop->pixelConfigured(),
+            'capi'            => $shop->capiReady(),
+            'has_pixel_scopes'=> $shop->hasPixelScopes() || $shop->grantedScopes() === [],
+            'missing_scopes'  => $shop->missingPixelScopes(),
+            'active'          => $shop->webPixelActive() && $shop->capiReady(),
+            'last_event_at'   => $lastEventAt ? \Carbon\Carbon::parse($lastEventAt) : null,
+            'today'           => $todayCount,
+            'counts'          => [
                 'PageView'         => (int) ($counts['PageView'] ?? 0),
                 'ViewContent'      => (int) ($counts['ViewContent'] ?? 0),
                 'AddToCart'        => (int) ($counts['AddToCart'] ?? 0),

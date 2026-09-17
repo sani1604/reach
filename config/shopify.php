@@ -14,8 +14,14 @@ return [
     // Latest stable Admin API version (quarterly releases, 12-month support).
     'api_version'  => env('SHOPIFY_API_VERSION', '2026-07'),
 
-    // write_pixels lets the app activate the Customer Events web pixel.
-    'scopes'       => array_filter(explode(',', env('SHOPIFY_APP_SCOPES', 'read_orders,read_products,write_pixels'))),
+    // webPixelCreate needs write_pixels + read_customer_events together.
+    'scopes'       => array_filter(array_map('trim', explode(',', env(
+        'SHOPIFY_APP_SCOPES',
+        'read_orders,read_products,write_pixels,read_customer_events'
+    )))),
+
+    // Scopes required specifically for Customer Events / web pixel activation.
+    'pixel_scopes' => ['write_pixels', 'read_customer_events'],
     'redirect_uri' => env('SHOPIFY_REDIRECT_URI', '/auth/callback'),
     // Admin deep-link handle: https://admin.shopify.com/store/{store}/apps/{handle}
     'app_handle'   => env('SHOPIFY_APP_HANDLE', 'reach-openai-ads-pixel'),
