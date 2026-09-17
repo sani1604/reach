@@ -2,34 +2,26 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncProductFeed;
 use App\Models\Shop;
 use App\Services\ProductFeedBuilder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Throwable;
 
 class ProductFeedController extends Controller
 {
-    public function index(Request $request, ProductFeedBuilder $builder)
+    public function index(Request $request)
     {
         $shop = $request->attributes->get('shop');
         $this->ensureFeedToken($shop);
 
-        $preview = null;
-        $error = null;
-
-        // Lazy build on first visit / refresh so Settings-only shops still work.
-        if ($request->boolean('refresh') || ! $shop->feed_synced_at) {
-            try {
-                $preview = $this->sync($shop, $builder);
-                $shop = $shop->fresh();
-            } catch (Throwable $e) {
-                $error = $e->getMessage();
-                logger()->warning('Product feed sync failed', [
-                    'shop'  => $shop->shopify_domain,
-                    'error' => $error,
-                ]);
-            }
+        // Never build the catalog on the page request — that caused nginx 504s.
+        // Queue a background job on first visit / ?refresh=1.
+        if ($request->boolean('refresh') || (! $shop->feed_synced_at && $shop->feed_status !== 'syncing')) {
+            $this->queueSync($shop);
+            $shop = $shop->fresh();
         }
 
         $meta = is_array($shop->feed_meta) ? $shop->feed_meta : [];
@@ -49,33 +41,62 @@ class ProductFeedController extends Controller
             'token' => $shop->feed_token,
         ]);
 
+        $error = null;
+        if ($shop->feed_status === 'error' && ! empty($meta['last_error'])) {
+            $error = (string) $meta['last_error'];
+        }
+
         return view('feed', [
-            'shop'    => $shop,
-            'stats'   => $stats,
-            'issues'  => array_slice($issues, 0, 40),
-            'sample'  => $sample,
-            'feedUrl' => $feedUrl,
-            'error'   => $error,
-            'preview' => $preview,
+            'shop'      => $shop,
+            'stats'     => $stats,
+            'issues'    => array_slice($issues, 0, 40),
+            'sample'    => $sample,
+            'feedUrl'   => $feedUrl,
+            'error'     => $error,
+            'syncing'   => $shop->feed_status === 'syncing',
+            'statusUrl' => route('feed.status'),
         ]);
     }
 
-    public function syncNow(Request $request, ProductFeedBuilder $builder)
+    /**
+     * Lightweight JSON poller so the UI refreshes when the job finishes.
+     */
+    public function status(Request $request)
+    {
+        $shop = $request->attributes->get('shop');
+        $meta = is_array($shop->feed_meta) ? $shop->feed_meta : [];
+
+        return response()->json([
+            'status'       => $shop->feed_status,
+            'syncing'      => $shop->feed_status === 'syncing',
+            'item_count'   => (int) $shop->feed_item_count,
+            'issue_count'  => (int) $shop->feed_issue_count,
+            'synced_at'    => $shop->feed_synced_at?->toIso8601String(),
+            'synced_human' => $shop->feed_synced_at?->diffForHumans(),
+            'error'        => $meta['last_error'] ?? null,
+            'stats'        => $meta['stats'] ?? null,
+        ]);
+    }
+
+    public function syncNow(Request $request)
     {
         $shop = $request->attributes->get('shop');
         $this->ensureFeedToken($shop);
 
-        try {
-            $this->sync($shop, $builder);
-        } catch (Throwable $e) {
-            return back()->with('error', 'Feed sync failed: '.$e->getMessage());
+        if ($shop->feed_status === 'syncing') {
+            return back()->with('feed_ok', 'Catalog sync already running — this page will update when it finishes.');
         }
 
-        return back()->with('saved', true)->with('feed_ok', 'Catalog synced for OpenAI Ads.');
+        $this->queueSync($shop);
+
+        return back()->with('saved', true)->with(
+            'feed_ok',
+            'Catalog sync started. Large stores take up to a minute — this page refreshes automatically.'
+        );
     }
 
     /**
-     * Public download URL — no session. Authenticated by per-shop feed_token.
+     * Public download — token-gated. Serves the cached file when available.
      */
     public function download(Request $request, string $shop, string $token, ProductFeedBuilder $builder)
     {
@@ -91,18 +112,31 @@ class ProductFeedController extends Controller
             $format = 'tsv';
         }
 
-        try {
-            $built = $builder->build($row);
-        } catch (Throwable $e) {
-            abort(503, 'Feed temporarily unavailable');
+        $body = SyncProductFeed::cachedBody($row->id, $format);
+
+        if ($body === null) {
+            if ($row->feed_status === 'syncing') {
+                return response('Feed is still building. Retry in a moment.', 503, [
+                    'Retry-After'  => '30',
+                    'Content-Type' => 'text/plain; charset=UTF-8',
+                ]);
+            }
+
+            try {
+                @set_time_limit(180);
+                $built = $builder->build($row, 1500);
+                $builder->persist($row, $built);
+                $body = $format === 'csv'
+                    ? $builder->toCsv($built['items'])
+                    : $builder->toTsv($built['items']);
+            } catch (Throwable $e) {
+                logger()->warning('Public feed download failed', [
+                    'shop'  => $domain,
+                    'error' => $e->getMessage(),
+                ]);
+                abort(503, 'Feed temporarily unavailable');
+            }
         }
-
-        // Keep meta fresh on download too.
-        $this->persist($row, $built);
-
-        $body = $format === 'csv'
-            ? $builder->toCsv($built['items'])
-            : $builder->toTsv($built['items']);
 
         $filename = 'openai-ads-feed-'.Str::slug(str_replace('.myshopify.com', '', $domain)).'.'.$format;
 
@@ -113,40 +147,51 @@ class ProductFeedController extends Controller
         ]);
     }
 
-    protected function sync(Shop $shop, ProductFeedBuilder $builder): array
+    protected function queueSync(Shop $shop): void
     {
-        $built = $builder->build($shop);
-        $this->persist($shop, $built);
+        $shop->forceFill([
+            'feed_status' => 'syncing',
+        ])->save();
 
-        return $built;
-    }
+        Cache::forget('feed-sync-done:'.$shop->id);
 
-    protected function persist(Shop $shop, array $built): void
-    {
-        $stats = $built['stats'];
-        $issues = $built['issues'];
-        $sample = array_slice($built['items'], 0, 8);
+        $shopId = (int) $shop->id;
 
-        $status = 'ready';
-        if ($stats['total'] === 0) {
-            $status = 'empty';
-        } elseif ($stats['issues'] > 0 && $stats['ready'] === 0) {
-            $status = 'issues';
-        } elseif ($stats['issues'] > 0) {
-            $status = 'issues';
-        }
+        // 1) Persist a queue job so a supervisor worker can pick it up / retry.
+        SyncProductFeed::dispatch($shopId)->onQueue('default');
 
-        $shop->update([
-            'feed_item_count'  => $stats['total'],
-            'feed_issue_count' => $stats['issues'],
-            'feed_synced_at'   => now(),
-            'feed_status'      => $status,
-            'feed_meta'        => [
-                'stats'  => $stats,
-                'issues' => array_slice($issues, 0, 100),
-                'sample' => $sample,
-            ],
-        ]);
+        // 2) Also run after the HTTP response is flushed. Nginx already got a
+        //    fast 302, so merchants never see a 504 — and hosts without a live
+        //    queue worker still finish the catalog build in this PHP process.
+        app()->terminating(function () use ($shopId) {
+            // Skip if a worker already claimed the unique job and finished.
+            $shop = Shop::find($shopId);
+            if (! $shop || $shop->feed_status !== 'syncing') {
+                return;
+            }
+
+            $lock = Cache::lock('feed-sync-run:'.$shopId, 240);
+            if (! $lock->get()) {
+                return;
+            }
+
+            try {
+                @set_time_limit(240);
+                @ignore_user_abort(true);
+                (new SyncProductFeed($shopId))->handle(app(ProductFeedBuilder::class));
+            } catch (Throwable $e) {
+                logger()->warning('terminating feed sync failed', [
+                    'shop_id' => $shopId,
+                    'error'   => $e->getMessage(),
+                ]);
+            } finally {
+                try {
+                    $lock->release();
+                } catch (Throwable) {
+                    // lock may have expired
+                }
+            }
+        });
     }
 
     protected function ensureFeedToken(Shop $shop): void

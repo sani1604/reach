@@ -260,6 +260,60 @@ class ReachFeedAndPerformanceTest extends TestCase
 
         $this->shop->refresh();
         $this->assertNotEmpty($this->shop->feed_token);
+        // First visit queues a background sync (never blocks the HTTP request).
+        $this->assertSame('syncing', $this->shop->feed_status);
+    }
+
+    public function test_feed_sync_returns_immediately_without_blocking(): void
+    {
+        Http::fake([
+            '*/shop.json' => Http::response([
+                'shop' => ['name' => 'Test', 'currency' => 'INR', 'country_code' => 'IN'],
+            ], 200),
+            '*/graphql.json' => Http::response([
+                'data' => [
+                    'products' => [
+                        'pageInfo' => ['hasNextPage' => false],
+                        'edges'    => [],
+                    ],
+                ],
+            ], 200),
+            '*' => Http::response(['ok' => true], 200),
+        ]);
+
+        $this->shop->update([
+            'feed_token'     => 'tok',
+            'feed_synced_at' => now()->subHour(),
+            'feed_status'    => 'ready',
+            'feed_item_count'=> 10,
+        ]);
+
+        $this->actingAsShop()
+            ->post('/feed/sync')
+            ->assertRedirect();
+
+        $this->shop->refresh();
+        // Request only marks syncing + queues — no nginx-killing catalog pull.
+        $this->assertSame('syncing', $this->shop->feed_status);
+    }
+
+    public function test_feed_status_endpoint(): void
+    {
+        $this->shop->update([
+            'feed_token'      => 'tok',
+            'feed_status'     => 'ready',
+            'feed_item_count' => 42,
+            'feed_synced_at'  => now(),
+        ]);
+
+        $this->actingAsShop()
+            ->getJson('/feed/status')
+            ->assertOk()
+            ->assertJson([
+                'status'     => 'ready',
+                'syncing'    => false,
+                'item_count' => 42,
+            ]);
     }
 
     public function test_performance_page_shows_revenue_and_funnel(): void

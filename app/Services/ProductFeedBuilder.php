@@ -31,7 +31,55 @@ class ProductFeedBuilder
      *   stats: array{total:int,ready:int,issues:int,out_of_stock:int,missing_image:int,missing_price:int}
      * }
      */
-    public function build(Shop $shop, int $limit = 2500): array
+    /**
+     * Persist feed stats/sample and cache rendered TSV/CSV on the local disk
+     * so public downloads never re-pull the whole catalog.
+     *
+     * @param  array{items: list<array>, issues: list<array>, stats: array}  $built
+     */
+    public function persist(Shop $shop, array $built): string
+    {
+        $stats = $built['stats'];
+        $issues = $built['issues'];
+        $sample = array_slice($built['items'], 0, 8);
+
+        $status = 'ready';
+        if ($stats['total'] === 0) {
+            $status = 'empty';
+        } elseif ($stats['issues'] > 0) {
+            $status = 'issues';
+        }
+
+        $shop->forceFill([
+            'feed_item_count'  => $stats['total'],
+            'feed_issue_count' => $stats['issues'],
+            'feed_synced_at'   => now(),
+            'feed_status'      => $status,
+            'feed_meta'        => [
+                'stats'      => $stats,
+                'issues'     => array_slice($issues, 0, 100),
+                'sample'     => $sample,
+                'last_error' => null,
+            ],
+        ])->save();
+
+        $dir = 'feeds';
+        \Illuminate\Support\Facades\Storage::disk('local')->makeDirectory($dir);
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "{$dir}/{$shop->id}.tsv",
+            $this->toTsv($built['items'])
+        );
+        \Illuminate\Support\Facades\Storage::disk('local')->put(
+            "{$dir}/{$shop->id}.csv",
+            $this->toCsv($built['items'])
+        );
+
+        \Illuminate\Support\Facades\Cache::put('feed-sync-done:'.$shop->id, now()->timestamp, now()->addHours(6));
+
+        return $status;
+    }
+
+    public function build(Shop $shop, int $limit = 1500): array
     {
         $currency = 'USD';
         $storeCountry = 'US';
@@ -126,13 +174,19 @@ class ProductFeedBuilder
     {
         $out = [];
         $cursor = null;
-        $pageSize = min(50, max(10, $limit));
+        // Larger pages = fewer round-trips (critical under nginx timeouts).
+        $pageSize = 50;
+        $pages = 0;
+        $maxPages = (int) ceil(max(1, $limit) / 10); // hard cap runaway loops
+        $maxPages = min(40, max(1, $maxPages)); // ≤ 40 GraphQL calls
 
         do {
+            $pages++;
             $after = $cursor ? ', after: "'.addslashes($cursor).'"' : '';
+            // Lean query: drop unused selectedOptions + limit images to 3.
             $query = <<<GRAPHQL
             query {
-              products(first: {$pageSize}{$after}) {
+              products(first: {$pageSize}{$after}, query: "status:active") {
                 pageInfo { hasNextPage endCursor }
                 edges {
                   node {
@@ -145,8 +199,8 @@ class ProductFeedBuilder
                     status
                     onlineStoreUrl
                     featuredImage { url }
-                    images(first: 5) { edges { node { url } } }
-                    variants(first: 50) {
+                    images(first: 3) { edges { node { url } } }
+                    variants(first: 25) {
                       edges {
                         node {
                           id
@@ -158,7 +212,6 @@ class ProductFeedBuilder
                           availableForSale
                           inventoryQuantity
                           image { url }
-                          selectedOptions { name value }
                         }
                       }
                     }
@@ -169,10 +222,20 @@ class ProductFeedBuilder
             GRAPHQL;
 
             $result = $this->shopify->graphql($shop, $query);
+
+            // GraphQL userErrors / throttle → fall back to REST once.
+            if (! empty($result['errors']) && empty($result['data']['products'])) {
+                logger()->warning('Product feed GraphQL errors', [
+                    'shop'   => $shop->shopify_domain,
+                    'errors' => $result['errors'],
+                ]);
+
+                return $this->fetchVariantsRest($shop, $limit);
+            }
+
             $connection = $result['data']['products'] ?? null;
 
             if (! $connection) {
-                // Fallback to REST if GraphQL products fails (scope / API issues).
                 return $this->fetchVariantsRest($shop, $limit);
             }
 
@@ -196,7 +259,7 @@ class ProductFeedBuilder
 
             $hasNext = (bool) ($connection['pageInfo']['hasNextPage'] ?? false);
             $cursor = $connection['pageInfo']['endCursor'] ?? null;
-        } while ($hasNext && $cursor && count($out) < $limit);
+        } while ($hasNext && $cursor && count($out) < $limit && $pages < $maxPages);
 
         return $out;
     }

@@ -9,12 +9,14 @@
             <p class="page-sub">Keep your catalog ready for OpenAI Ads — every variant mapped, issues caught early.</p>
         </div>
         <div class="page-head-actions">
-            @if ($shop->feed_status)
-                <span class="tag {{ $shop->feed_status === 'ready' ? 'green' : ($shop->feed_status === 'empty' ? 'gray' : 'amber') }}">
+            @if (($syncing ?? false) || $shop->feed_status === 'syncing')
+                <span class="tag amber" id="feed-status-tag">Syncing…</span>
+            @elseif ($shop->feed_status)
+                <span class="tag {{ $shop->feed_status === 'ready' ? 'green' : ($shop->feed_status === 'empty' ? 'gray' : 'amber') }}" id="feed-status-tag">
                     {{ ucfirst($shop->feed_status) }}
                 </span>
             @else
-                <span class="tag gray">Not synced</span>
+                <span class="tag gray" id="feed-status-tag">Not synced</span>
             @endif
         </div>
     </div>
@@ -22,11 +24,18 @@
     @if (session('feed_ok'))
         <div class="alert success">✓ {{ session('feed_ok') }}</div>
     @endif
+    @if (($syncing ?? false) || $shop->feed_status === 'syncing')
+        <div class="alert info" id="feed-syncing-banner">
+            Building your catalog feed in the background…
+            <span class="muted small" id="feed-syncing-hint">This usually takes 15–60 seconds. The page will reload when ready.</span>
+        </div>
+    @endif
     @if ($error)
         <div class="alert error">
             Feed sync failed: {{ $error }}
             <div class="hint" style="margin-top:6px;color:inherit;">
-                Confirm the app has <span class="mono">read_products</span> scope, then try Sync again.
+                Confirm the app has <span class="mono">read_products</span> scope and a queue worker is running
+                (<span class="mono">php artisan queue:work</span>), then try Sync again.
             </div>
         </div>
     @endif
@@ -41,10 +50,17 @@
         </p>
 
         <div class="feed-hero-actions">
-            <form method="POST" action="{{ route('feed.sync') }}">
+            <form method="POST" action="{{ route('feed.sync') }}" id="feed-sync-form">
                 @csrf
-                <button class="btn btn-primary" type="submit">
-                    {{ $shop->feed_synced_at ? 'Sync catalog now' : 'Build product feed' }}
+                <button class="btn btn-primary" type="submit" id="feed-sync-btn"
+                    {{ (($syncing ?? false) || $shop->feed_status === 'syncing') ? 'disabled' : '' }}>
+                    @if (($syncing ?? false) || $shop->feed_status === 'syncing')
+                        Syncing…
+                    @elseif ($shop->feed_synced_at)
+                        Sync catalog now
+                    @else
+                        Build product feed
+                    @endif
                 </button>
             </form>
             @if ($shop->feed_token && $shop->feed_item_count > 0)
@@ -208,22 +224,62 @@
         (function () {
             var btn = document.getElementById('copy-feed-url');
             var el = document.getElementById('feed-url');
-            if (!btn || !el) return;
-            btn.addEventListener('click', function () {
-                var text = el.textContent || '';
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(text).then(function () {
-                        btn.textContent = 'Copied';
+            if (btn && el) {
+                btn.addEventListener('click', function () {
+                    var text = el.textContent || '';
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(function () {
+                            btn.textContent = 'Copied';
+                            setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+                        });
+                    } else {
+                        var ta = document.createElement('textarea');
+                        ta.value = text; document.body.appendChild(ta); ta.select();
+                        try { document.execCommand('copy'); btn.textContent = 'Copied'; } catch (e) {}
+                        document.body.removeChild(ta);
                         setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+                    }
+                });
+            }
+
+            // Poll feed status while a background sync is running so merchants
+            // see results without a long blocking request (avoids nginx 504).
+            var syncing = {{ (($syncing ?? false) || ($shop->feed_status === 'syncing')) ? 'true' : 'false' }};
+            if (!syncing) return;
+
+            var statusUrl = {!! json_encode($statusUrl ?? route('feed.status')) !!};
+            var tries = 0;
+            var maxTries = 90; // ~3 minutes at 2s
+
+            function poll() {
+                tries++;
+                var req = (window.reachAuth && window.reachAuth.withToken)
+                    ? window.reachAuth.withToken(statusUrl).then(function (u) { return fetch(u, { headers: { 'Accept': 'application/json' } }); })
+                    : fetch(statusUrl, { headers: { 'Accept': 'application/json' } });
+
+                req.then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (d) {
+                        if (!d) {
+                            if (tries < maxTries) setTimeout(poll, 2000);
+                            return;
+                        }
+                        if (d.syncing) {
+                            var hint = document.getElementById('feed-syncing-hint');
+                            if (hint && d.item_count) {
+                                hint.textContent = 'Still working… ' + Number(d.item_count).toLocaleString() + ' variants so far.';
+                            }
+                            if (tries < maxTries) setTimeout(poll, 2000);
+                            return;
+                        }
+                        // Done (ready / empty / issues / error) — reload to show results.
+                        window.location.reload();
+                    })
+                    .catch(function () {
+                        if (tries < maxTries) setTimeout(poll, 3000);
                     });
-                } else {
-                    var ta = document.createElement('textarea');
-                    ta.value = text; document.body.appendChild(ta); ta.select();
-                    try { document.execCommand('copy'); btn.textContent = 'Copied'; } catch (e) {}
-                    document.body.removeChild(ta);
-                    setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
-                }
-            });
+            }
+
+            setTimeout(poll, 1500);
         })();
     </script>
 @endsection

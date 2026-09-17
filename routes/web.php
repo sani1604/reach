@@ -55,6 +55,7 @@ Route::middleware('shopify.request')->group(function () {
     Route::get('/performance', [PerformanceController::class, 'index'])->name('performance');
 
     Route::get('/feed', [ProductFeedController::class, 'index'])->name('feed');
+    Route::get('/feed/status', [ProductFeedController::class, 'status'])->name('feed.status');
     Route::post('/feed/sync', [ProductFeedController::class, 'syncNow'])->name('feed.sync');
 
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
