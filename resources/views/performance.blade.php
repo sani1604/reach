@@ -98,9 +98,14 @@
                     $max = max(1, max(array_column($steps, 'n')));
                 @endphp
                 @foreach ($steps as $step)
+                    @php
+                        $pct = $step['n'] > 0 ? max(6, (int) round($step['n'] / $max * 100)) : 0;
+                    @endphp
                     <div class="pf-row">
                         <div class="pf-label">{{ $step['label'] }}</div>
-                        <div class="pf-track"><div class="pf-fill" style="width: {{ max(4, round($step['n'] / $max * 100)) }}%"></div></div>
+                        <div class="pf-track">
+                            <div class="pf-fill" style="width: {{ $pct }}%;{{ $pct === 0 ? ' min-width:0;opacity:.35;width:2px;' : '' }}"></div>
+                        </div>
                         <div class="pf-count">{{ number_format($step['n']) }}</div>
                         <div class="pf-rate">{{ isset($step['rate']) ? $step['rate'].'%' : '—' }}</div>
                     </div>
@@ -112,14 +117,22 @@
             <h3>Revenue — last 14 days</h3>
             <p class="sub">Purchase value by day (net of the window, not refunds).</p>
             <div class="chart rev-chart">
-                @php $maxRev = max(1, max(array_column($s['chart'], 'revenue') ?: [1])); @endphp
+                @php
+                    $maxRev = max(1.0, (float) max(array_column($s['chart'] ?? [], 'revenue') ?: [0]));
+                @endphp
                 @foreach ($s['chart'] as $day)
+                    @php
+                        $h = $day['revenue'] > 0 ? max(8, (int) round($day['revenue'] / $maxRev * 100)) : 0;
+                    @endphp
                     <div class="bar" title="{{ $day['date'] }}: ₹{{ number_format($day['revenue'], 0) }} · {{ $day['orders'] }} orders">
-                        <div class="col" style="height: {{ $day['revenue'] > 0 ? max(3, round($day['revenue'] / $maxRev * 100)) : 0 }}%"></div>
+                        <div class="col {{ $h === 0 ? 'is-empty' : '' }}" style="height: {{ $h === 0 ? 2 : $h }}%"></div>
                         <div class="day">{{ $day['date'] }}</div>
                     </div>
                 @endforeach
             </div>
+            @if ($maxRev <= 1 && collect($s['chart'] ?? [])->sum('revenue') <= 0)
+                <p class="muted small mt-16" style="margin-bottom:0;">No purchase revenue in this window yet — bars fill as orders land.</p>
+            @endif
         </div>
     </div>
 

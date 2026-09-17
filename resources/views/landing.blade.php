@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Reach — OpenAI Ads Pixel for Shopify India</title>
     <meta name="description" content="Track ChatGPT Ads conversions, Shopify purchases and revenue with Reach — the OpenAI Ads Pixel and Conversions API built for Shopify merchants.">
-    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}?v={{ @filemtime(public_path('css/app.css')) ?: '4' }}">
 </head>
 <body class="landing">
     <div class="wrap">

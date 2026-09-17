@@ -8,7 +8,8 @@
         {{-- Required by App Bridge CDN so ui-nav-menu / idToken work inside admin. --}}
         <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
     @endif
-    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    {{-- Cache-bust so Shopify admin / CDN always pick up layout CSS after deploys. --}}
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}?v={{ @filemtime(public_path('css/app.css')) ?: '4' }}">
     @if (config('shopify.embedded'))
         {{-- App Bridge 4 must load in <head> so <ui-nav-menu> upgrades before paint. --}}
         <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>

@@ -7,7 +7,7 @@
     @if (config('shopify.api_key'))
         <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
     @endif
-    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}?v={{ @filemtime(public_path('css/app.css')) ?: '4' }}">
     {{-- App Bridge 4 — exposes `window.shopify` (idToken, etc.).
          The legacy unpkg UMD build exposes a different global and silently
          broke session-token auth in this app. --}}

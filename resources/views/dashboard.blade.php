@@ -139,9 +139,13 @@
             <h3>Events — last 14 days</h3>
             <p class="sub">All tracked events by day.</p>
             <div class="chart">
+                @php
+                    $chartMax = max(1, (int) max(array_column($stats['chart'] ?? [], 'count') ?: [0]));
+                @endphp
                 @foreach ($stats['chart'] as $day)
-                    <div class="bar" title="{{ $day['date'] }}: {{ $day['count'] }}">
-                        <div class="col" style="height: {{ $day['count'] > 0 ? max(3, round($day['count'] / max(1, $stats['chart'] ? max(array_column($stats['chart'], 'count')) : 1) * 100)) : 0 }}%"></div>
+                    @php $h = $day['count'] > 0 ? max(8, (int) round($day['count'] / $chartMax * 100)) : 0; @endphp
+                    <div class="bar" title="{{ $day['date'] }}: {{ $day['count'] }} events">
+                        <div class="col {{ $h === 0 ? 'is-empty' : '' }}" style="height: {{ $h === 0 ? 2 : $h }}%"></div>
                         <div class="day">{{ $day['date'] }}</div>
                     </div>
                 @endforeach
