@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Loading Reach…</title>
+    @if (config('shopify.api_key'))
+        <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
+    @endif
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     {{-- App Bridge 4 — exposes `window.shopify` (idToken, etc.).
          The legacy unpkg UMD build exposes a different global and silently

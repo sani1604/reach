@@ -4,18 +4,42 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title', 'Reach') — OpenAI Ads Pixel for Shopify</title>
+    @if (config('shopify.embedded') && config('shopify.api_key'))
+        {{-- Required by App Bridge CDN so ui-nav-menu / idToken work inside admin. --}}
+        <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
+    @endif
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    @if (config('shopify.embedded'))
+        {{-- App Bridge 4 must load in <head> so <ui-nav-menu> upgrades before paint. --}}
+        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+    @endif
 </head>
-<body>
+<body class="{{ config('shopify.embedded') ? 'is-embedded' : '' }}">
     @if (config('shopify.embedded'))
         <script>window.__reachShop = @js(($shop->shopify_domain ?? session('shop')));</script>
+
+        {{-- Shopify admin sidebar / mobile title-bar nav (App Bridge ui-nav-menu).
+             rel="home" marks the default landing page and hides that item from the list
+             (the app name already links home). Paths must be relative app routes. --}}
+        <ui-nav-menu>
+            <a href="{{ url('/dashboard') }}" rel="home">Home</a>
+            <a href="{{ url('/dashboard') }}">Dashboard</a>
+            <a href="{{ url('/performance') }}">Performance</a>
+            <a href="{{ url('/feed') }}">Product Feed</a>
+            <a href="{{ url('/settings') }}">Settings</a>
+            <a href="{{ url('/billing') }}">Billing</a>
+        </ui-nav-menu>
     @endif
+
     <header class="app-header">
         <div class="brand">
             <span class="logo">R</span>
             Reach
         </div>
-        <nav class="app-nav">
+        {{-- In-app nav is a fallback when not embedded (local demo / standalone).
+             Inside Shopify admin the sidebar ui-nav-menu is the primary nav, so
+             this strip is hidden via .is-embedded .app-nav. --}}
+        <nav class="app-nav" aria-label="App">
             <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard*') ? 'active' : '' }}">Dashboard</a>
             <a href="{{ route('performance') }}" class="{{ request()->routeIs('performance') ? 'active' : '' }}">Performance</a>
             <a href="{{ route('feed') }}" class="{{ request()->routeIs('feed*') ? 'active' : '' }}">Product Feed</a>
@@ -39,12 +63,9 @@
     </main>
 
     @if (config('shopify.embedded'))
-        {{-- App Bridge 4 CDN — exposes `window.shopify` with `idToken()`.
-             (The old unpkg App Bridge 3 UMD build exposed `ShopifyApp` instead,
-             so `window.shopify` was undefined, session tokens were never
-             attached, and every tab navigation fell back to the install
-             screen.) --}}
-        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+        {{-- App Bridge is loaded in <head>. This block wires session tokens
+             onto fetches / in-app links / forms so multi-page Laravel routes
+             keep working when third-party cookies are blocked. --}}
         <script>
         (function () {
             'use strict';
@@ -76,7 +97,22 @@
                 });
             }
 
-            window.reachAuth = { token: token, withToken: withToken, shop: shop };
+            // Prefer App Bridge's client-side navigator when available so the
+            // admin sidebar stays in sync; fall back to a full iframe load.
+            function navigate(pathAndQuery) {
+                return withToken(pathAndQuery).then(function (href) {
+                    try {
+                        var path = href.replace(window.location.origin, '');
+                        if (window.shopify && typeof window.shopify.navigate === 'function') {
+                            window.shopify.navigate(path);
+                            return;
+                        }
+                    } catch (e) { /* fall through */ }
+                    window.location.href = href;
+                });
+            }
+
+            window.reachAuth = { token: token, withToken: withToken, navigate: navigate, shop: shop };
 
             // Wrap fetch: attach the session token to same-origin calls.
             var origFetch = window.fetch;
@@ -102,17 +138,21 @@
             };
 
             // Same-origin link navigations carry ?shop=&id_token=.
+            // Skip links inside <ui-nav-menu> — App Bridge owns those clicks
+            // and already keeps the admin sidebar in sync.
             document.addEventListener('click', function (e) {
                 var link = e.target.closest ? e.target.closest('a[href]') : null;
                 if (!link || link.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                if (link.closest && link.closest('ui-nav-menu')) return;
 
-                var url = new URL(link.getAttribute('href'), window.location.origin);
+                var hrefAttr = link.getAttribute('href') || '';
+                if (!hrefAttr || hrefAttr.charAt(0) === '#') return;
+
+                var url = new URL(hrefAttr, window.location.origin);
                 if (url.origin !== window.location.origin || !shop) return;
 
                 e.preventDefault();
-                withToken(url.pathname + url.search + url.hash).then(function (href) {
-                    window.location.href = href;
-                });
+                navigate(url.pathname + url.search + url.hash);
             }, true);
 
             // Form posts (settings, billing) carry the token as a query param

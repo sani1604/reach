@@ -318,10 +318,23 @@ class ReachFeedAndPerformanceTest extends TestCase
 
     public function test_nav_includes_performance_and_feed_links(): void
     {
+        // Force embedded mode so the Shopify admin ui-nav-menu is rendered.
+        config([
+            'shopify.embedded' => true,
+            'shopify.api_key'  => 'test-api-key',
+        ]);
+
         $this->actingAsShop()
             ->get('/dashboard')
             ->assertOk()
             ->assertSee('Performance', false)
-            ->assertSee('Product Feed', false);
+            ->assertSee('Product Feed', false)
+            ->assertSee('<ui-nav-menu>', false)
+            ->assertSee('shopify-api-key', false)
+            ->assertSee('rel="home"', false)
+            ->assertSee('/performance', false)
+            ->assertSee('/feed', false)
+            ->assertSee('/settings', false)
+            ->assertSee('/billing', false);
     }
 }

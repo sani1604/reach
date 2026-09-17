@@ -69,6 +69,11 @@ a:hover { color: var(--brand-dark); }
 .app-nav a:hover { background: var(--bg); color: var(--ink); }
 .app-nav a.active { background: var(--brand-soft); color: var(--brand-dark); }
 
+/* Embedded in Shopify admin: primary nav lives in the admin sidebar via
+   <ui-nav-menu>. Hide the duplicate in-app strip so merchants aren't lost. */
+body.is-embedded .app-nav { display: none; }
+body.is-embedded .app-header { justify-content: space-between; }
+
 .plan-badge {
   font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
   background: var(--green-soft); color: var(--green);
