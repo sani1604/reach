@@ -45,22 +45,57 @@ class PerformanceController extends Controller
         $atcRate = $viewContent > 0 ? round($addToCart / $viewContent * 100, 2) : 0;
         $checkoutRate = $addToCart > 0 ? round($checkouts / $addToCart * 100, 2) : 0;
 
-        // Match-quality proxy: share of purchases that carry attribution ids.
+        // Event Match Quality (EMQ) proxy — phone-first for India.
         $purchaseRows = (clone $base)->where('event_name', 'Purchase')->get(['payload']);
         $withOppref = 0;
         $withUser = 0;
+        $withPhone = 0;
+        $withEmail = 0;
+        $codOrders = 0;
+        $prepaidOrders = 0;
         foreach ($purchaseRows as $row) {
-            $ud = $row->payload['user_data'] ?? [];
-            if (! empty($row->payload['oppref']) || ! empty($ud['oppref'])) {
+            $p = $row->payload ?? [];
+            $ud = $p['user_data'] ?? [];
+            if (! empty($p['oppref']) || ! empty($ud['oppref']) || ! empty($ud['oai_click_id'])) {
                 $withOppref++;
             }
-            if (! empty($ud['email']) || ! empty($ud['phone']) || ! empty($ud['obref']) || ! empty($ud['fbc'])) {
+            $hasPhone = ! empty($ud['phone']) || ! empty($ud['phone_numbers_sha256']);
+            $hasEmail = ! empty($ud['email']) || ! empty($ud['emails_sha256']);
+            if ($hasPhone) {
+                $withPhone++;
+            }
+            if ($hasEmail) {
+                $withEmail++;
+            }
+            if ($hasPhone || $hasEmail || ! empty($ud['obref']) || ! empty($ud['fbc'])
+                || ! empty($ud['city']) || ! empty($ud['ip_address'])) {
                 $withUser++;
             }
+            if (! empty($p['is_cod'])) {
+                $codOrders++;
+            } else {
+                $prepaidOrders++;
+            }
+        }
+        // EMQ score weights phone higher (India OTP/WhatsApp checkouts).
+        $emqScore = 0.0;
+        if ($purchasesCount > 0) {
+            $emqScore = round((
+                ($withOppref * 40) +
+                ($withPhone * 35) +
+                ($withEmail * 15) +
+                ($withUser * 10)
+            ) / ($purchasesCount * 100) * 100, 1);
+            $emqScore = min(100.0, $emqScore);
         }
         $matchRate = $purchasesCount > 0
-            ? round(max($withOppref, $withUser) / $purchasesCount * 100, 1)
+            ? round(max($withOppref, $withPhone, $withUser) / $purchasesCount * 100, 1)
             : 0.0;
+
+        $rtoCount = (clone $base)->where('event_name', 'PurchaseCancelled')
+            ->where('dedup_key', 'like', 'rto:%')
+            ->count();
+        $cancelCount = (int) (clone $base)->where('event_name', 'PurchaseCancelled')->count();
 
         // ChatGPT / OpenAI traffic proxy via UTM + oppref on browser events.
         $browserEvents = (clone $base)->where('source', 'browser')->get(['payload', 'event_name']);
@@ -147,8 +182,15 @@ class PerformanceController extends Controller
                 'atc_rate'         => $atcRate,
                 'checkout_rate'    => $checkoutRate,
                 'match_rate'       => $matchRate,
+                'emq_score'        => $emqScore,
                 'with_oppref'      => $withOppref,
+                'with_phone'       => $withPhone,
+                'with_email'       => $withEmail,
                 'with_user'        => $withUser,
+                'cod_orders'       => $codOrders,
+                'prepaid_orders'   => $prepaidOrders,
+                'rto_count'        => $rtoCount,
+                'cancel_count'     => $cancelCount,
                 'page_views'       => $pageViews,
                 'view_content'     => $viewContent,
                 'add_to_cart'      => $addToCart,

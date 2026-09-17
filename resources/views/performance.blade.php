@@ -48,14 +48,37 @@
             <div class="delta">purchase / page view</div>
         </div>
         <div class="stat">
-            <div class="label">Match quality</div>
-            <div class="value">{{ $s['match_rate'] }}%</div>
-            <div class="delta">{{ $s['with_oppref'] }} oppref · {{ $s['with_user'] }} with user signals</div>
+            <div class="label">EMQ score</div>
+            <div class="value brand">{{ $s['emq_score'] ?? $s['match_rate'] }}%</div>
+            <div class="delta">phone-first · {{ $s['with_phone'] ?? 0 }} phone · {{ $s['with_oppref'] }} oppref</div>
         </div>
         <div class="stat">
             <div class="label">ChatGPT sessions</div>
             <div class="value">{{ number_format($s['chatgpt_sessions']) }}</div>
-            <div class="delta">oppref / utm chatgpt · openai</div>
+            <div class="delta">oppref / utm chatgpt · openai · wa</div>
+        </div>
+    </div>
+
+    <div class="grid stats mb-16">
+        <div class="stat">
+            <div class="label">COD orders</div>
+            <div class="value">{{ number_format($s['cod_orders'] ?? 0) }}</div>
+            <div class="delta">cash on delivery (India)</div>
+        </div>
+        <div class="stat">
+            <div class="label">Prepaid orders</div>
+            <div class="value green">{{ number_format($s['prepaid_orders'] ?? 0) }}</div>
+            <div class="delta">UPI · card · wallet</div>
+        </div>
+        <div class="stat">
+            <div class="label">RTO / cancels</div>
+            <div class="value">{{ number_format($s['rto_count'] ?? 0) }}</div>
+            <div class="delta">{{ number_format($s['cancel_count'] ?? 0) }} total adjustments</div>
+        </div>
+        <div class="stat">
+            <div class="label">Phone match rate</div>
+            <div class="value">{{ ($s['orders'] ?? 0) > 0 ? round(($s['with_phone'] ?? 0) / max(1, $s['purchases']) * 100, 1) : 0 }}%</div>
+            <div class="delta">+91 E.164 hashed to CAPI</div>
         </div>
     </div>
 

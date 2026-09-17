@@ -42,6 +42,7 @@ return [
         'ViewContent'        => 'contents_viewed',
         'AddToCart'          => 'items_added',
         'InitiateCheckout'   => 'checkout_started',
+        'AddPaymentInfo'     => 'custom', // India 1-click checkouts (GoKwik/Shopflo/Fastrr/Magic)
         'Purchase'           => 'order_created',
         'PurchaseCancelled'  => 'custom',
         'TestEvent'          => 'custom',
@@ -62,13 +63,14 @@ return [
             'events_limit' => 50_000,
         ],
         'basic' => [
-            'price'        => (float) env('PLAN_BASIC_PRICE', 499),
+            // India-first pricing via Shopify Billing (UPI / Netbanking / cards).
+            'price'        => (float) env('PLAN_BASIC_PRICE', 1499),
             'currency'     => env('PLAN_BASIC_CURRENCY', 'INR'),
             'trial_days'   => (int) env('PLAN_BASIC_TRIAL_DAYS', 7),
             'events_limit' => 1_000_000,
         ],
         'growth' => [
-            'price'        => (float) env('PLAN_GROWTH_PRICE', 1999),
+            'price'        => (float) env('PLAN_GROWTH_PRICE', 2499),
             'currency'     => env('PLAN_GROWTH_CURRENCY', 'INR'),
             'trial_days'   => (int) env('PLAN_GROWTH_TRIAL_DAYS', 7),
             'events_limit' => 5_000_000,

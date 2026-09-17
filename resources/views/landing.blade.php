@@ -114,6 +114,27 @@
 
     <section>
         <div class="wrap">
+            <h2>Built for Indian D2C</h2>
+            <p class="sec-lede">Phone-first matching, COD/RTO adjustments, and the 1-click checkouts your customers already use.</p>
+            <div class="steps">
+                <div class="step">
+                    <h4>📱 Phone-first EMQ</h4>
+                    <p>Automatic +91 E.164 normalization and SHA-256 phone hashing — tuned for OTP / WhatsApp checkouts, not just email.</p>
+                </div>
+                <div class="step">
+                    <h4>💵 COD &amp; RTO safe</h4>
+                    <p>Tracks COD separately. Cancelled and return-to-origin orders sync conversion adjustments so you don’t waste ChatGPT budget.</p>
+                </div>
+                <div class="step">
+                    <h4>⚡ Quick checkouts</h4>
+                    <p>Native listeners for GoKwik, Shopflo, Fastrr and Razorpay Magic Checkout alongside standard Shopify checkout.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="wrap">
             <h2>Simple, affordable pricing</h2>
             <p class="sec-lede">Start free. Upgrade when you want revenue attribution and alerts.</p>
             <div class="pricing">
@@ -124,28 +145,28 @@
                     <ul>
                         <li>OpenAI Ads pixel (1-click install)</li>
                         <li>Product feed for OpenAI Ads</li>
-                        <li>100% server-side event delivery</li>
-                        <li>Live events dashboard &amp; funnel</li>
-                        <li>5 events tracked, ad-blocker-proof</li>
+                        <li>Phone-first EMQ (+91 hashing)</li>
+                        <li>COD order tracking</li>
+                        <li>Live funnel, ad-blocker-proof</li>
                     </ul>
                     <a class="btn btn-ghost" href="{{ route('auth.install') }}">Install Free</a>
                 </div>
                 <div class="price-card featured">
                     <span class="ribbon">Most popular</span>
                     <div class="name">Basic</div>
-                    <div class="price">₹499 <small>/ month</small></div>
+                    <div class="price">₹1,499 <small>/ month</small></div>
                     <div class="per">7-day free trial · up to 1,000,000 events / month</div>
                     <ul>
                         <li>Everything in Free</li>
-                        <li>Performance &amp; revenue dashboard</li>
-                        <li>Top products sold via ChatGPT Ads</li>
-                        <li>Attribution OpenAI can't show</li>
-                        <li>Email alerts if your pixel breaks</li>
+                        <li>Performance &amp; EMQ dashboard</li>
+                        <li>COD / RTO conversion adjustments</li>
+                        <li>GoKwik · Shopflo · Fastrr · Magic</li>
+                        <li>WhatsApp + multi-channel UTMs</li>
                     </ul>
                     <a class="btn btn-primary" href="{{ route('auth.install') }}">Install Free</a>
                 </div>
             </div>
-            <p class="sec-lede" style="margin-top: 20px;">Need more? The <strong>Growth</strong> plan adds campaign &amp; UTM attribution, priority delivery and up to 5,000,000 events/month for ₹1,999.</p>
+            <p class="sec-lede" style="margin-top: 20px;">Need more? The <strong>Growth</strong> plan adds campaign &amp; UTM attribution, priority delivery and up to 5,000,000 events/month for ₹2,499.</p>
         </div>
     </section>
 

@@ -104,4 +104,62 @@ class EventMapperTest extends TestCase
         $this->assertSame('custom', $event['type']);
         $this->assertSame('reach_test_connection', $event['custom_event_name']);
     }
+
+    public function test_india_phone_gets_91_prefix_before_hash(): void
+    {
+        $this->assertSame('919876543210', $this->mapper->normalizePhoneDigits('9876543210', 'IN'));
+        $this->assertSame('919876543210', $this->mapper->normalizePhoneDigits('+91 98765 43210', 'IN'));
+        $this->assertSame('919876543210', $this->mapper->normalizePhoneDigits('09876543210', 'IN'));
+        $this->assertSame('919876543210', $this->mapper->normalizePhoneDigits('91-9876543210'));
+
+        $event = $this->mapper->build('Purchase', [
+            'event_id'   => 'p-in-1',
+            'value'      => 1499,
+            'currency'   => 'INR',
+            'source_url' => 'https://shop.example.com/thank-you',
+            'user_data'  => [
+                'phone'   => '9876543210',
+                'country' => 'IN',
+                'city'    => 'Delhi',
+                'state'   => 'DL',
+                'postal_code' => '110001',
+            ],
+        ]);
+
+        $this->assertSame(
+            hash('sha256', '919876543210'),
+            $event['user']['phone_numbers_sha256'][0]
+        );
+        // Phone-first: phones appear even when email is absent.
+        $this->assertArrayNotHasKey('emails_sha256', $event['user']);
+        $this->assertSame(['delhi'], $event['user']['cities']);
+        $this->assertSame(['dl'], $event['user']['regions']);
+        $this->assertSame(['110001'], $event['user']['postal_codes']);
+        $this->assertSame(['IN'], $event['user']['countries']);
+    }
+
+    public function test_oai_click_id_aliases_map_to_oppref(): void
+    {
+        $event = $this->mapper->build('PageView', [
+            'event_id' => 'px-oai',
+            'url'      => 'https://shop.example.com/?oai_click_id=clk_99',
+            'user_data'=> ['oai_click_id' => 'clk_99'],
+        ]);
+
+        $this->assertSame('clk_99', $event['oppref']);
+    }
+
+    public function test_add_payment_info_is_custom_event(): void
+    {
+        $event = $this->mapper->build('AddPaymentInfo', [
+            'event_id'   => 'pay-1',
+            'value'      => 999,
+            'currency'   => 'INR',
+            'source_url' => 'https://shop.example.com/checkouts',
+        ]);
+
+        $this->assertSame('custom', $event['type']);
+        $this->assertSame('add_payment_info', $event['custom_event_name']);
+        $this->assertSame(99900, $event['data']['amount']);
+    }
 }

@@ -8,16 +8,16 @@ use App\Models\Shop;
 use App\Models\Visitor;
 
 /**
- * Joins browser-side click IDs (oppref/obref + legacy fbc/fbp) to server-side
- * Purchase events.
+ * Joins browser-side click IDs (oppref/obref + oai_click_id + legacy fbc/fbp)
+ * to server-side Purchase events.
  *
  * Two paths:
  *  1. Deterministic — the pixel on the order-status/thank-you page calls
  *     /api/enrich with the order id + click ids, which are attached to the
  *     already-recorded Purchase and re-forwarded to the Conversions API.
- *  2. Best-effort — the order webhook looks the visitor up by email/phone
- *     (or by order_id, when enrichment arrived first) and merges click ids
- *     into the Purchase before forwarding.
+ *  2. Best-effort — the order webhook looks the visitor up by phone (India-
+ *     first) then email (or by order_id, when enrichment arrived first) and
+ *     merges click ids into the Purchase before forwarding.
  */
 class VisitorBridge
 {
@@ -35,7 +35,14 @@ class VisitorBridge
 
         $fbc     = $userData['fbc'] ?? ($input['fbc'] ?? null);
         $fbp     = $userData['fbp'] ?? ($input['fbp'] ?? null);
-        $oppref  = $userData['oppref'] ?? ($input['oppref'] ?? null);
+        $oppref  = $userData['oppref']
+            ?? ($input['oppref'] ?? null)
+            ?? ($userData['oai_click_id'] ?? null)
+            ?? ($input['oai_click_id'] ?? null)
+            ?? ($userData['chatgpt_aid'] ?? null)
+            ?? ($input['chatgpt_aid'] ?? null)
+            ?? ($userData['oai_cid'] ?? null)
+            ?? ($input['oai_cid'] ?? null);
         $obref   = $userData['obref'] ?? ($input['obref'] ?? null);
         $email   = $input['email'] ?? ($userData['email'] ?? null);
         $phone   = $input['phone'] ?? ($userData['phone'] ?? null);
@@ -64,8 +71,8 @@ class VisitorBridge
     }
 
     /**
-     * Best-effort join at order-webhook time: find a visitor by email, phone
-     * or order_id and merge their click ids into the Purchase's user data.
+     * Best-effort join at order-webhook time: find a visitor by phone (first),
+     * email, or order_id and merge their click ids into the Purchase's user data.
      */
     public function enrichUserData(Shop $shop, array $userData, ?string $orderId = null): array
     {
@@ -74,16 +81,17 @@ class VisitorBridge
             return $userData;
         }
 
+        // India-first: match phone before email (OTP / WhatsApp checkouts).
         $visitor = null;
-        if (! empty($userData['email'])) {
+        if (! empty($userData['phone'])) {
+            $visitor = $this->findByPhone($shop, (string) $userData['phone']);
+        }
+        if (! $visitor && ! empty($userData['email'])) {
             $visitor = Visitor::where('shop_id', $shop->id)
                 ->where('email', $userData['email'])
                 ->latest('last_seen_at')->first();
-        } elseif (! empty($userData['phone'])) {
-            $visitor = Visitor::where('shop_id', $shop->id)
-                ->where('phone', $userData['phone'])
-                ->latest('last_seen_at')->first();
-        } elseif ($orderId) {
+        }
+        if (! $visitor && $orderId) {
             $visitor = Visitor::where('shop_id', $shop->id)
                 ->where('order_id', (string) $orderId)
                 ->latest('last_seen_at')->first();
@@ -141,7 +149,12 @@ class VisitorBridge
         $userData = $payload['user_data'] ?? [];
 
         $changed = false;
-        foreach (['fbc', 'fbp', 'oppref', 'obref', 'vid', 'email', 'phone'] as $key) {
+        $clickKeys = [
+            'fbc', 'fbp', 'oppref', 'obref', 'vid', 'email', 'phone',
+            'oai_click_id', 'chatgpt_aid', 'oai_cid',
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+        ];
+        foreach ($clickKeys as $key) {
             if (! empty($data[$key]) && empty($userData[$key])) {
                 $userData[$key] = $data[$key];
                 $changed = true;
@@ -149,10 +162,26 @@ class VisitorBridge
         }
 
         // Also accept nested user_data from the pixel.
-        foreach (['fbc', 'fbp', 'oppref', 'obref'] as $key) {
+        foreach (['fbc', 'fbp', 'oppref', 'obref', 'oai_click_id', 'chatgpt_aid', 'oai_cid'] as $key) {
             if (! empty($data['user_data'][$key]) && empty($userData[$key])) {
                 $userData[$key] = $data['user_data'][$key];
                 $changed = true;
+            }
+        }
+
+        // Promote alternate OpenAI click-id names onto oppref.
+        if (empty($userData['oppref'])) {
+            foreach (['oai_click_id', 'chatgpt_aid', 'oai_cid'] as $alt) {
+                if (! empty($userData[$alt])) {
+                    $userData['oppref'] = $userData[$alt];
+                    $changed = true;
+                    break;
+                }
+                if (! empty($data[$alt])) {
+                    $userData['oppref'] = $data[$alt];
+                    $changed = true;
+                    break;
+                }
             }
         }
 
@@ -178,5 +207,33 @@ class VisitorBridge
         }
 
         return true;
+    }
+
+    /**
+     * Find a visitor by phone, trying raw + E.164-normalized (+91) forms.
+     */
+    protected function findByPhone(Shop $shop, string $phone): ?Visitor
+    {
+        $candidates = array_values(array_unique(array_filter([
+            $phone,
+            preg_replace('/\D+/', '', $phone) ?: null,
+        ])));
+
+        $normalized = app(EventMapper::class)->normalizePhoneDigits($phone, 'IN');
+        if ($normalized) {
+            $candidates[] = $normalized;
+            $candidates[] = '+'.$normalized;
+            // Also bare 10-digit form for India.
+            if (str_starts_with($normalized, '91') && strlen($normalized) === 12) {
+                $candidates[] = substr($normalized, 2);
+            }
+        }
+
+        $candidates = array_values(array_unique(array_filter($candidates)));
+
+        return Visitor::where('shop_id', $shop->id)
+            ->whereIn('phone', $candidates)
+            ->latest('last_seen_at')
+            ->first();
     }
 }

@@ -131,6 +131,154 @@ class ReachEnrichmentTest extends TestCase
         $this->assertEquals('fb.1.abc', $purchase->payload['user_data']['fbc']);
     }
 
+    public function test_order_webhook_tags_cod_and_hashes_india_phone(): void
+    {
+        $body = json_encode([
+            'id'                    => 88,
+            'name'                  => '#1088',
+            'currency'              => 'INR',
+            'total_price'           => '2499.00',
+            'financial_status'      => 'pending',
+            'payment_gateway_names' => ['Cash on Delivery (COD)'],
+            'line_items'            => [
+                ['product_id' => 1, 'title' => 'Kurta', 'price' => '2499.00', 'quantity' => 1],
+            ],
+            'customer'              => ['phone' => '9876543210'],
+            'billing_address'       => [
+                'phone'        => '9876543210',
+                'city'         => 'Mumbai',
+                'province'     => 'MH',
+                'zip'          => '400001',
+                'country_code' => 'IN',
+            ],
+        ]);
+
+        $this->postJson('/webhooks', json_decode($body, true), [
+            'X-Shopify-Topic'       => 'orders/create',
+            'X-Shopify-Shop-Domain' => 'test-store.myshopify.com',
+            'X-Shopify-Hmac-Sha256' => $this->hmac($body),
+            'X-Shopify-Webhook-Id'  => 'wh-cod-1',
+        ])->assertOk();
+
+        $purchase = Event::where('order_id', '88')->where('event_name', 'Purchase')->first();
+        $this->assertNotNull($purchase);
+        $this->assertTrue((bool) ($purchase->payload['is_cod'] ?? false));
+        $this->assertSame('cod', $purchase->payload['payment_method'] ?? null);
+        $this->assertSame('9876543210', $purchase->payload['user_data']['phone'] ?? null);
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), 'pid=')) {
+                return false;
+            }
+            $events = $request['events'] ?? [];
+            $user = $events[0]['user'] ?? [];
+            $expected = hash('sha256', '919876543210');
+
+            return ($user['phone_numbers_sha256'][0] ?? null) === $expected
+                && ($user['cities'][0] ?? null) === 'mumbai';
+        });
+    }
+
+    public function test_orders_cancelled_emits_purchase_cancelled_adjustment(): void
+    {
+        Event::create([
+            'shop_id'     => $this->shop->id,
+            'event_name'  => 'Purchase',
+            'event_id'    => 'purchase-55',
+            'dedup_key'   => 'purchase:55',
+            'source'      => 'server',
+            'order_id'    => '55',
+            'currency'    => 'INR',
+            'value'       => 999,
+            'occurred_at' => now(),
+            'payload'     => ['is_cod' => true, 'user_data' => ['phone' => '9123456789']],
+        ]);
+
+        $body = json_encode([
+            'id'                    => 55,
+            'name'                  => '#1055',
+            'currency'              => 'INR',
+            'total_price'           => '999.00',
+            'cancelled_at'          => '2026-09-17T10:00:00Z',
+            'cancel_reason'         => 'customer',
+            'payment_gateway_names' => ['Cash on Delivery (COD)'],
+            'customer'              => ['phone' => '9123456789'],
+        ]);
+
+        $this->postJson('/webhooks', json_decode($body, true), [
+            'X-Shopify-Topic'       => 'orders/cancelled',
+            'X-Shopify-Shop-Domain' => 'test-store.myshopify.com',
+            'X-Shopify-Hmac-Sha256' => $this->hmac($body),
+            'X-Shopify-Webhook-Id'  => 'wh-cancel-1',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('events', [
+            'shop_id'    => $this->shop->id,
+            'event_name' => 'PurchaseCancelled',
+            'order_id'   => '55',
+            'dedup_key'  => 'cancel:55',
+        ]);
+    }
+
+    public function test_orders_updated_rto_tag_emits_rto_adjustment(): void
+    {
+        $body = json_encode([
+            'id'                    => 66,
+            'name'                  => '#1066',
+            'currency'              => 'INR',
+            'total_price'           => '1499.00',
+            'tags'                  => 'rto, delhivery',
+            'closed_at'             => '2026-09-17T12:00:00Z',
+            'fulfillment_status'    => 'restocked',
+            'payment_gateway_names' => ['Cash on Delivery (COD)'],
+            'customer'              => ['phone' => '9988776655'],
+        ]);
+
+        $this->postJson('/webhooks', json_decode($body, true), [
+            'X-Shopify-Topic'       => 'orders/updated',
+            'X-Shopify-Shop-Domain' => 'test-store.myshopify.com',
+            'X-Shopify-Hmac-Sha256' => $this->hmac($body),
+            'X-Shopify-Webhook-Id'  => 'wh-rto-1',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('events', [
+            'shop_id'    => $this->shop->id,
+            'event_name' => 'PurchaseCancelled',
+            'order_id'   => '66',
+            'dedup_key'  => 'rto:66',
+        ]);
+    }
+
+    public function test_visitor_bridge_matches_india_phone_variants(): void
+    {
+        Visitor::create([
+            'shop_id'      => $this->shop->id,
+            'vid'          => 'v-phone',
+            'phone'        => '9876543210',
+            'oppref'       => 'opp-phone-1',
+            'last_seen_at' => now(),
+        ]);
+
+        $body = json_encode([
+            'id'              => 77,
+            'currency'        => 'INR',
+            'total_price'     => '500.00',
+            'line_items'      => [],
+            'customer'        => ['phone' => '+91 98765 43210'],
+            'billing_address' => ['country_code' => 'IN'],
+        ]);
+
+        $this->postJson('/webhooks', json_decode($body, true), [
+            'X-Shopify-Topic'       => 'orders/create',
+            'X-Shopify-Shop-Domain' => 'test-store.myshopify.com',
+            'X-Shopify-Hmac-Sha256' => $this->hmac($body),
+            'X-Shopify-Webhook-Id'  => 'wh-phone-join-1',
+        ])->assertOk();
+
+        $purchase = Event::where('order_id', '77')->where('event_name', 'Purchase')->first();
+        $this->assertSame('opp-phone-1', $purchase->payload['user_data']['oppref'] ?? null);
+    }
+
     protected function hmac(string $body): string
     {
         return base64_encode(hash_hmac('sha256', $body, 'test-secret', true));

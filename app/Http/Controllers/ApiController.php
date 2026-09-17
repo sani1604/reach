@@ -89,12 +89,29 @@ class ApiController extends Controller
             $userData = [];
         }
 
-        foreach (['fbc', 'fbp', 'oppref', 'obref', 'email', 'phone'] as $key) {
+        $identityKeys = [
+            'fbc', 'fbp', 'oppref', 'obref', 'email', 'phone',
+            'oai_click_id', 'chatgpt_aid', 'oai_cid',
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+            'city', 'region', 'state', 'country', 'postal_code', 'zip',
+            'first_name', 'last_name', 'whatsapp_id', 'checkout_provider',
+        ];
+        foreach ($identityKeys as $key) {
             if ($request->filled($key) && empty($userData[$key])) {
                 $userData[$key] = $request->input($key);
             }
             if (! empty($data[$key]) && empty($userData[$key])) {
                 $userData[$key] = $data[$key];
+            }
+        }
+
+        // Promote alternate OpenAI click-id names onto oppref.
+        if (empty($userData['oppref'])) {
+            foreach (['oai_click_id', 'chatgpt_aid', 'oai_cid'] as $alt) {
+                if (! empty($userData[$alt])) {
+                    $userData['oppref'] = $userData[$alt];
+                    break;
+                }
             }
         }
 
@@ -213,6 +230,7 @@ class ApiController extends Controller
             'product_added_to_cart'  => 'AddToCart',
             'checkout_started'       => 'InitiateCheckout',
             'checkout_completed'     => 'Purchase',
+            'payment_info_submitted' => 'AddPaymentInfo',
             // OpenAI Ads taxonomy
             'pageview'               => 'PageView',
             'page_view'              => 'PageView',
@@ -221,6 +239,8 @@ class ApiController extends Controller
             'addtocart'              => 'AddToCart',
             'items_added'            => 'AddToCart',
             'initiatecheckout'       => 'InitiateCheckout',
+            'addpaymentinfo'         => 'AddPaymentInfo',
+            'add_payment_info'       => 'AddPaymentInfo',
             'purchase'               => 'Purchase',
             'order_created'          => 'Purchase',
             // Internal names (pass-through)

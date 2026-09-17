@@ -60,6 +60,8 @@ return [
         'app/uninstalled',
         'orders/create',
         'orders/paid',
+        'orders/cancelled', // COD cancel / RTO conversion adjustments
+        'orders/updated',   // RTO tags + fulfillment restock
         'checkouts/create',
         'refunds/create',
         'app_subscriptions/update',

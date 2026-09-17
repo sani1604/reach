@@ -118,36 +118,73 @@ register(({ analytics, browser, settings, init, context }) => {
   }
 
   /**
-   * Capture OpenAI Ads attribution ids + legacy Meta-style click ids.
-   * oppref  — set on the landing URL after a ChatGPT ad click; pixel stores __oppref
-   * obref   — opaque browser reference cookie set by the Measurement Pixel
+   * Capture OpenAI Ads attribution ids + multi-channel UTMs + legacy click ids.
+   * oppref / oai_click_id / chatgpt_aid / oai_cid — ChatGPT ad click id
+   * obref — opaque browser reference cookie set by the Measurement Pixel
+   * utm_* — ChatGPT search, WhatsApp, and partner campaign tags
    */
   async function clickIds() {
     const ids = {};
     const oppref =
       (await readCookie('__oppref')) ||
       (await readCookie('_oppref')) ||
-      (await readCookie('oppref'));
+      (await readCookie('oppref')) ||
+      (await readCookie('oai_click_id')) ||
+      (await readCookie('chatgpt_aid')) ||
+      (await readCookie('oai_cid'));
     const obref =
       (await readCookie('__obref')) ||
       (await readCookie('_obref')) ||
       (await readCookie('obref'));
     const fbc = await readCookie('_fbc');
     const fbp = await readCookie('_fbp');
-    if (oppref) ids.oppref = oppref;
+    if (oppref) {
+      ids.oppref = oppref;
+      ids.oai_click_id = oppref;
+    }
     if (obref) ids.obref = obref;
     if (fbc) ids.fbc = fbc;
     if (fbp) ids.fbp = fbp;
 
-    // Also try to pull oppref off the landing URL if the cookie hasn't been set yet.
+    // Landing URL: OpenAI click ids + multi-channel UTMs (ChatGPT / WhatsApp / partners).
     try {
       const href =
         (doc.location && (doc.location.href || doc.location)) ||
         '';
-      if (href && !ids.oppref) {
+      if (href) {
         const u = new URL(String(href));
-        const fromQuery = u.searchParams.get('oppref') || u.searchParams.get('op_pref');
-        if (fromQuery) ids.oppref = fromQuery;
+        const sp = u.searchParams;
+        if (!ids.oppref) {
+          const fromQuery =
+            sp.get('oppref') ||
+            sp.get('op_pref') ||
+            sp.get('oai_click_id') ||
+            sp.get('chatgpt_aid') ||
+            sp.get('oai_cid') ||
+            sp.get('oai_aid');
+          if (fromQuery) {
+            ids.oppref = fromQuery;
+            ids.oai_click_id = fromQuery;
+            // Persist so later pages / thank-you can join without the query string.
+            try {
+              await browser.cookie.set(
+                '__oppref=' + encodeURIComponent(fromQuery) +
+                  '; Max-Age=2592000; Path=/; SameSite=Lax'
+              );
+            } catch (e2) {
+              /* noop */
+            }
+          }
+        }
+        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(function (k) {
+          const v = sp.get(k);
+          if (v) ids[k] = v;
+        });
+        // WhatsApp / Meta click ids sometimes ride on wa_me / fbclid.
+        const wa = sp.get('wa_me') || sp.get('whatsapp_id');
+        if (wa) ids.whatsapp_id = wa;
+        const fbclid = sp.get('fbclid');
+        if (fbclid && !ids.fbc) ids.fbclid = fbclid;
       }
     } catch (e) {
       /* noop */
@@ -345,15 +382,122 @@ register(({ analytics, browser, settings, init, context }) => {
               checkout.email ||
               (checkout.billingAddress && checkout.billingAddress.email) ||
               null,
+            // India phone-first EMQ: prefer checkout.phone (OTP / WhatsApp).
             phone:
               checkout.phone ||
               (checkout.billingAddress && checkout.billingAddress.phone) ||
+              (checkout.shippingAddress && checkout.shippingAddress.phone) ||
               null,
+            city:
+              (checkout.billingAddress && checkout.billingAddress.city) ||
+              (checkout.shippingAddress && checkout.shippingAddress.city) ||
+              null,
+            region:
+              (checkout.billingAddress &&
+                (checkout.billingAddress.province || checkout.billingAddress.provinceCode)) ||
+              null,
+            country:
+              (checkout.billingAddress &&
+                (checkout.billingAddress.countryCodeV2 || checkout.billingAddress.countryCode)) ||
+              'IN',
+            postal_code:
+              (checkout.billingAddress && checkout.billingAddress.zip) || null,
           },
           ids
         ),
         user_data: ids,
       });
     });
+
+    // payment_info_submitted — often fires for Indian 1-click checkouts
+    // (GoKwik / Shopflo / Fastrr / Razorpay Magic) that skip standard events.
+    analytics.subscribe('payment_info_submitted', function (event) {
+      const checkout = (event.data && event.data.checkout) || {};
+      track('AddPaymentInfo', {
+        url: pageUrl(event),
+        value: amount(checkout.totalPrice),
+        currency: currency(checkout.totalPrice) || 'INR',
+        checkout_token: checkout.token || undefined,
+      });
+    });
+  }
+
+  /**
+   * India quick-checkout bridges (GoKwik, Shopflo, Fastrr, Razorpay Magic).
+   * These widgets often complete outside standard Shopify checkout_* events.
+   * We listen for postMessage + custom DOM-less hooks they emit into the
+   * pixel sandbox via analytics custom events when available.
+   */
+  function trackQuickCheckout(provider, detail) {
+    detail = detail || {};
+    const name = detail.event || detail.type || 'InitiateCheckout';
+    const mapped =
+      name === 'purchase' || name === 'order_created' || name === 'checkout_completed'
+        ? null // Purchase stays server-authoritative
+        : name === 'add_to_cart'
+          ? 'AddToCart'
+          : name === 'payment_info'
+            ? 'AddPaymentInfo'
+            : 'InitiateCheckout';
+
+    if (!mapped) {
+      // Enrich only when an order id is present.
+      if (detail.order_id || detail.orderId) {
+        clickIds().then(function (ids) {
+          send('/api/enrich', {
+            data: Object.assign(
+              {
+                order_id: String(detail.order_id || detail.orderId || '').replace(/\D+/g, '') || null,
+                order_name: detail.order_name || detail.orderName || null,
+                value: detail.value != null ? Number(detail.value) : undefined,
+                currency: detail.currency || 'INR',
+                phone: detail.phone || null,
+                email: detail.email || null,
+                checkout_provider: provider,
+              },
+              ids
+            ),
+            user_data: ids,
+          });
+        });
+      }
+      return;
+    }
+
+    track(mapped, {
+      value: detail.value != null ? Number(detail.value) : undefined,
+      currency: detail.currency || 'INR',
+      checkout_provider: provider,
+      phone: detail.phone || undefined,
+      content_ids: detail.content_ids || undefined,
+    });
+  }
+
+  // Custom event name used by partner widgets / theme snippets:
+  //   analytics.publish('reach:quick_checkout', { provider: 'gokwik', ... })
+  if (analytics && typeof analytics.subscribe === 'function') {
+    ['reach:quick_checkout', 'gokwik:checkout', 'shopflo:checkout', 'fastrr:checkout', 'razorpay:magic_checkout'].forEach(
+      function (evtName) {
+        try {
+          analytics.subscribe(evtName, function (event) {
+            const detail = (event && event.data) || event || {};
+            const provider =
+              detail.provider ||
+              (evtName.indexOf('gokwik') >= 0
+                ? 'gokwik'
+                : evtName.indexOf('shopflo') >= 0
+                  ? 'shopflo'
+                  : evtName.indexOf('fastrr') >= 0
+                    ? 'fastrr'
+                    : evtName.indexOf('razorpay') >= 0
+                      ? 'razorpay_magic'
+                      : 'quick_checkout');
+            trackQuickCheckout(provider, detail);
+          });
+        } catch (e) {
+          /* custom topics may not exist — ignore */
+        }
+      }
+    );
   }
 });
