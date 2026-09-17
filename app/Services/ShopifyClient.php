@@ -225,6 +225,50 @@ class ShopifyClient
     */
 
     /**
+     * Build the settings object that matches shopify.extension.toml:
+     *
+     *   [settings.fields.config]  single_line_text_field
+     *
+     * Shopify expects `settings` as a JSON **object** whose keys match the
+     * declared fields — NOT a pre-stringified JSON string. Passing a string
+     * makes webPixelCreate fail validation and leaves Pixels = Disconnected.
+     */
+    public function webPixelSettings(Shop $shop): array
+    {
+        $config = [
+            'app_url'  => rtrim((string) config('app.url'), '/'),
+            'shop'     => $shop->shopify_domain,
+            'pixel_id' => $shop->pixelConfigured() ? $shop->pixel_id : null,
+        ];
+
+        return [
+            // single_line_text_field → must be a string value
+            'config' => json_encode($config, JSON_UNESCAPED_SLASHES),
+        ];
+    }
+
+    /**
+     * Read the store's current web pixel (if any) from the Admin API.
+     *
+     * @return array{id?: string, settings?: mixed}|null
+     */
+    public function fetchWebPixel(Shop $shop): ?array
+    {
+        $result = $this->graphql($shop, <<<'GRAPHQL'
+        query {
+          webPixel {
+            id
+            settings
+          }
+        }
+        GRAPHQL);
+
+        $pixel = $result['data']['webPixel'] ?? null;
+
+        return is_array($pixel) && ! empty($pixel['id']) ? $pixel : null;
+    }
+
+    /**
      * Deployed extensions are NOT active per store until the app creates a
      * web pixel. This is what makes the Reach Pixel actually appear in
      * Customer Events and start tracking. Idempotent.
@@ -232,82 +276,148 @@ class ShopifyClient
      * IMPORTANT: the Shopify WebPixel GID is stored on shops.web_pixel_id —
      * never on shops.pixel_id (that column holds the merchant's OpenAI Ads
      * Pixel ID). Colliding the two is what made events stop firing.
+     *
+     * @return array{ok: bool, id?: string|null, error?: string, errors?: array}
      */
     public function ensureWebPixel(Shop $shop): ?string
     {
-        // The `config` setting (declared in the extension toml) carries the
-        // app URL, shop domain, and (when set) the OpenAI Pixel ID so the
-        // sandboxed pixel can dual-fire to OpenAI's browser SDK + Reach.
-        $config = [
-            'app_url'  => rtrim((string) config('app.url'), '/'),
-            'shop'     => $shop->shopify_domain,
-            'pixel_id' => $shop->pixelConfigured() ? $shop->pixel_id : null,
-        ];
+        $outcome = $this->ensureWebPixelDetailed($shop);
 
-        $settings = json_encode([
-            'config' => json_encode($config, JSON_UNESCAPED_SLASHES),
-        ], JSON_UNESCAPED_SLASHES);
+        return $outcome['id'] ?? null;
+    }
 
-        if ($shop->web_pixel_id) {
-            // Keep the recorded pixel's settings fresh (app URL / OpenAI pixel).
+    /**
+     * Same as ensureWebPixel but returns a structured result for the UI.
+     *
+     * @return array{ok: bool, id?: string|null, error?: string, errors?: array}
+     */
+    public function ensureWebPixelDetailed(Shop $shop): array
+    {
+        if (! $shop->access_token) {
+            return ['ok' => false, 'id' => null, 'error' => 'missing_access_token'];
+        }
+
+        $settings = $this->webPixelSettings($shop);
+
+        // 1) Prefer the live pixel on the store (source of truth) over our DB.
+        $remote = null;
+        try {
+            $remote = $this->fetchWebPixel($shop);
+        } catch (Throwable $e) {
+            logger()->warning('webPixel query failed', [
+                'shop'  => $shop->shopify_domain,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($remote && ! empty($remote['id'])) {
+            $id = (string) $remote['id'];
+
             $result = $this->graphql($shop, <<<'GRAPHQL'
             mutation WebPixelUpdate($id: ID!, $webPixel: WebPixelInput!) {
               webPixelUpdate(id: $id, webPixel: $webPixel) {
-                userErrors { field message }
-                webPixel { id }
+                userErrors { field message code }
+                webPixel { id settings }
               }
             }
             GRAPHQL, [
-                'id'       => $shop->web_pixel_id,
+                'id'       => $id,
                 'webPixel' => ['settings' => $settings],
             ]);
 
             if (! $this->hasUserErrors($result)) {
-                return $shop->web_pixel_id;
+                if ($shop->web_pixel_id !== $id) {
+                    $shop->update(['web_pixel_id' => $id]);
+                }
+
+                return ['ok' => true, 'id' => $id];
             }
 
-            // Stale web_pixel_id (merchant deleted the pixel in the admin) —
-            // fall through and create a fresh one.
+            // Update failed — try create path after logging.
+            logger()->warning('webPixelUpdate failed', [
+                'shop'   => $shop->shopify_domain,
+                'id'     => $id,
+                'errors' => $result['data']['webPixelUpdate']['userErrors']
+                    ?? $result['errors']
+                    ?? [],
+            ]);
+        } elseif ($shop->web_pixel_id) {
+            // DB has an id but the store doesn't — clear the stale pointer.
             $shop->web_pixel_id = null;
             $shop->save();
         }
 
+        // 2) Create a fresh web pixel activation for this store.
         $result = $this->graphql($shop, <<<'GRAPHQL'
         mutation WebPixelCreate($webPixel: WebPixelInput!) {
           webPixelCreate(webPixel: $webPixel) {
-            userErrors { field message }
-            webPixel { id }
+            userErrors { field message code }
+            webPixel { id settings }
           }
         }
         GRAPHQL, ['webPixel' => ['settings' => $settings]]);
 
         if ($this->hasUserErrors($result)) {
+            $errors = $result['data']['webPixelCreate']['userErrors']
+                ?? $result['errors']
+                ?? [];
+
+            // "Already exists" style errors — re-query and adopt the existing pixel.
+            $message = strtolower(json_encode($errors) ?: '');
+            if (str_contains($message, 'taken')
+                || str_contains($message, 'already')
+                || str_contains($message, 'exists')) {
+                $existing = $this->fetchWebPixel($shop);
+                if ($existing && ! empty($existing['id'])) {
+                    $shop->update(['web_pixel_id' => (string) $existing['id']]);
+
+                    return ['ok' => true, 'id' => (string) $existing['id']];
+                }
+            }
+
             logger()->warning('webPixelCreate failed', [
-                'shop'   => $shop->shopify_domain,
-                'errors' => $result['data']['webPixelCreate']['userErrors'] ?? $result['errors'] ?? [],
+                'shop'     => $shop->shopify_domain,
+                'errors'   => $errors,
+                'settings' => $settings,
+                'raw'      => $result,
             ]);
 
-            return null;
+            $first = is_array($errors) && isset($errors[0]['message'])
+                ? (string) $errors[0]['message']
+                : 'webPixelCreate failed';
+
+            return [
+                'ok'     => false,
+                'id'     => null,
+                'error'  => $first,
+                'errors' => $errors,
+            ];
         }
 
         $webPixelId = $result['data']['webPixelCreate']['webPixel']['id'] ?? null;
 
         if ($webPixelId) {
             $shop->update(['web_pixel_id' => $webPixelId]);
+
+            return ['ok' => true, 'id' => $webPixelId];
         }
 
-        return $webPixelId;
+        return ['ok' => false, 'id' => null, 'error' => 'no_web_pixel_id_returned', 'errors' => $result];
     }
 
     protected function hasUserErrors(array $result): bool
     {
+        if (! empty($result['errors'])) {
+            return true;
+        }
+
         foreach ($result['data'] ?? [] as $payload) {
             if (! empty($payload['userErrors'])) {
                 return true;
             }
         }
 
-        return array_key_exists('errors', $result);
+        return false;
     }
 
     /*

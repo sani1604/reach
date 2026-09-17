@@ -33,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Embedded form posts authenticate via session token.
             'settings',
             'settings/*',
+            'settings/reconnect-pixel',
             'billing',
             'billing/*',
         ]);

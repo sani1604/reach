@@ -9,6 +9,12 @@
     @if (session('test_ok'))
         <div class="alert success">✓ {{ session('test_ok') }}</div>
     @endif
+    @if (session('pixel_ok'))
+        <div class="alert success">✓ {{ session('pixel_ok') }}</div>
+    @endif
+    @if (session('pixel_warn'))
+        <div class="alert info">{{ session('pixel_warn') }}</div>
+    @endif
     @if (session('test_error'))
         <div class="alert error">{{ session('test_error') }}</div>
     @endif
@@ -20,11 +26,27 @@
         </div>
     @endif
 
+    @unless ($shop->webPixelActive())
+        <div class="alert error">
+            <div>
+                <strong>Shopify pixel is disconnected.</strong>
+                Customer Events are not running on your storefront — that is why Page views and other funnel steps stay at 0.
+                Click <strong>Reconnect pixel</strong> below. If it still fails, deploy the extension with
+                <span class="mono">shopify app deploy</span> and make sure the app has the <span class="mono">write_pixels</span> scope.
+            </div>
+            <form method="POST" action="{{ route('settings.reconnect-pixel') }}" style="margin-left:auto;">
+                @csrf
+                <button class="btn btn-primary btn-sm" type="submit">Reconnect pixel</button>
+            </form>
+        </div>
+    @endunless
+
     <div class="card mb-16">
         <h3>OpenAI Ads credentials</h3>
         <p class="sub">
             Find these in <span class="mono">ads.openai.com</span> → Tools → Conversions.
-            Setup takes about 30 seconds. Events start flowing on the next storefront visit.
+            Setup takes about 30 seconds. Events start flowing on the next storefront visit
+            once the Shopify pixel is connected.
         </p>
 
         <form method="POST" action="{{ route('settings.save') }}">
@@ -120,11 +142,11 @@
                 <td>Shopify web pixel (Customer Events)</td>
                 <td>
                     @if ($shop->webPixelActive())
-                        <span class="tag green">Active</span>
+                        <span class="tag green">Connected</span>
                         <span class="mono" style="margin-left:8px;font-size:11px;">{{ \Illuminate\Support\Str::limit($shop->web_pixel_id, 36) }}</span>
                     @else
-                        <span class="tag amber">Activating…</span>
-                        <div class="hint" style="margin-top:4px;">Installed automatically after app install. Re-save settings to retry.</div>
+                        <span class="tag amber">Disconnected</span>
+                        <div class="hint" style="margin-top:4px;">This is what Shopify admin shows as “Pixels: Disconnected”. Reconnect to start tracking.</div>
                     @endif
                 </td>
             </tr>
@@ -137,6 +159,16 @@
                 <td class="mono">{{ $shop->shopify_domain }}</td>
             </tr>
         </table>
+
+        <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+            <form method="POST" action="{{ route('settings.reconnect-pixel') }}">
+                @csrf
+                <button class="btn btn-primary btn-sm" type="submit">
+                    {{ $shop->webPixelActive() ? 'Refresh pixel settings' : 'Reconnect pixel' }}
+                </button>
+            </form>
+        </div>
+
         <p class="hint mt-16">
             Events tracked: <span class="mono">page_viewed</span>, <span class="mono">contents_viewed</span>,
             <span class="mono">items_added</span>, <span class="mono">checkout_started</span>, <span class="mono">order_created</span>.

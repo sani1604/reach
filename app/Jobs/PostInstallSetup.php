@@ -19,9 +19,12 @@ use Throwable;
  *     via `shopify app deploy`, this only matters for manually configured
  *     Partner Dashboard apps).
  *  2. Activates the deployed web pixel extension for this store via the
- *     `webPixelCreate` GraphQL mutation. Deploying an extension does NOT
+ *     `webPixelCreate` Admin API mutation. Deploying an extension does NOT
  *     activate it per store — without this step the Reach Pixel never shows
- *     up in Customer Events and never tracks anything.
+ *     up in Customer Events and Shopify admin shows "Pixels: Disconnected".
+ *
+ * Also callable synchronously via runNow() so the first boot / Settings
+ * reconnect doesn't depend on a queue worker being online.
  */
 class PostInstallSetup implements ShouldQueue
 {
@@ -44,6 +47,27 @@ class PostInstallSetup implements ShouldQueue
             return;
         }
 
+        $this->runFor($shop, $client, throwOnPixelFailure: $this->job !== null);
+    }
+
+    /**
+     * Synchronous path used by the Settings "Reconnect pixel" button and by
+     * the install boot when we want activation without waiting on a worker.
+     *
+     * @return array{ok: bool, web_pixel_id?: string|null, error?: string}
+     */
+    public static function runNow(Shop $shop, ?ShopifyClient $client = null): array
+    {
+        $client = $client ?: app(ShopifyClient::class);
+
+        return (new self($shop->id))->runFor($shop, $client, throwOnPixelFailure: false);
+    }
+
+    /**
+     * @return array{ok: bool, web_pixel_id?: string|null, error?: string}
+     */
+    protected function runFor(Shop $shop, ShopifyClient $client, bool $throwOnPixelFailure): array
+    {
         try {
             $client->subscribeWebhooks($shop);
         } catch (Throwable $e) {
@@ -54,17 +78,45 @@ class PostInstallSetup implements ShouldQueue
         }
 
         try {
-            $client->ensureWebPixel($shop);
+            $outcome = $client->ensureWebPixelDetailed($shop);
+
+            if (! ($outcome['ok'] ?? false)) {
+                logger()->warning('Web pixel activation failed', [
+                    'shop'   => $shop->shopify_domain,
+                    'error'  => $outcome['error'] ?? null,
+                    'errors' => $outcome['errors'] ?? null,
+                ]);
+
+                if ($throwOnPixelFailure && $this->attempts() < $this->tries) {
+                    $this->release($this->backoff);
+                }
+
+                return [
+                    'ok'           => false,
+                    'web_pixel_id' => null,
+                    'error'        => $outcome['error'] ?? 'web_pixel_activation_failed',
+                ];
+            }
+
+            return [
+                'ok'           => true,
+                'web_pixel_id' => $outcome['id'] ?? $shop->fresh()->web_pixel_id,
+            ];
         } catch (Throwable $e) {
-            logger()->warning('Web pixel activation failed (will retry)', [
+            logger()->warning('Web pixel activation threw (will retry)', [
                 'shop'  => $shop->shopify_domain,
                 'error' => $e->getMessage(),
             ]);
 
-            // Extension may not be propagated from the latest deploy yet.
-            if ($this->attempts() < $this->tries) {
+            if ($throwOnPixelFailure && $this->attempts() < $this->tries) {
                 $this->release($this->backoff);
             }
+
+            return [
+                'ok'           => false,
+                'web_pixel_id' => null,
+                'error'        => $e->getMessage(),
+            ];
         }
     }
 }

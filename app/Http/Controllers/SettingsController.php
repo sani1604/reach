@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\PostInstallSetup;
 use App\Models\Shop;
 use App\Services\EventMapper;
 use App\Services\OpenAiCapiClient;
@@ -14,6 +15,22 @@ class SettingsController extends Controller
     public function index(Request $request)
     {
         $shop = $request->attributes->get('shop');
+
+        // Self-heal: if the store is installed but the Customer Events pixel
+        // was never activated (common when the queue worker was offline at
+        // install time), try once on page load so the merchant doesn't stay
+        // stuck on "Pixels: Disconnected".
+        if ($shop->isInstalled() && ! $shop->webPixelActive()) {
+            try {
+                PostInstallSetup::runNow($shop);
+                $shop = $shop->fresh() ?? $shop;
+            } catch (Throwable $e) {
+                logger()->warning('Auto web-pixel connect on settings failed', [
+                    'shop'  => $shop->shopify_domain,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         return view('settings', compact('shop'));
     }
@@ -33,20 +50,72 @@ class SettingsController extends Controller
             'advertiser_api_key' => $data['advertiser_api_key'] ?: null,
         ]);
 
-        // Push the new OpenAI Pixel ID into the Customer Events web pixel so
-        // the storefront dual-fires with the correct id immediately.
-        if ($shop->pixel_id !== $previousPixel || ! $shop->web_pixel_id) {
-            try {
-                app(ShopifyClient::class)->ensureWebPixel($shop->fresh());
-            } catch (Throwable $e) {
-                logger()->warning('Web pixel refresh after settings save failed', [
-                    'shop'  => $shop->shopify_domain,
-                    'error' => $e->getMessage(),
-                ]);
+        // Always (re)activate / refresh the Customer Events web pixel so
+        // Shopify admin shows Connected and the storefront starts tracking.
+        $pixelOk = false;
+        $pixelMessage = null;
+        try {
+            $outcome = app(ShopifyClient::class)->ensureWebPixelDetailed($shop->fresh());
+            $pixelOk = (bool) ($outcome['ok'] ?? false);
+            if ($pixelOk) {
+                $pixelMessage = 'Shopify web pixel connected.';
+            } else {
+                $pixelMessage = 'Saved credentials, but Shopify web pixel is still disconnected: '
+                    .($outcome['error'] ?? 'unknown error')
+                    .'. Click “Reconnect pixel”, or run `shopify app deploy` if the extension is missing.';
             }
+        } catch (Throwable $e) {
+            logger()->warning('Web pixel refresh after settings save failed', [
+                'shop'  => $shop->shopify_domain,
+                'error' => $e->getMessage(),
+            ]);
+            $pixelMessage = 'Saved credentials, but could not reach Shopify to activate the web pixel: '.$e->getMessage();
         }
 
-        return back()->with('saved', true);
+        // Also keep a queued retry when the OpenAI pixel id changed.
+        if ($shop->pixel_id !== $previousPixel) {
+            PostInstallSetup::dispatch($shop->id)->onQueue('default');
+        }
+
+        return back()->with('saved', true)->with(
+            $pixelOk ? 'pixel_ok' : 'pixel_warn',
+            $pixelMessage
+        );
+    }
+
+    /**
+     * Force-reconnect the Shopify Customer Events web pixel for this store.
+     * Used when Shopify admin shows "Pixels: Disconnected".
+     */
+    public function reconnectPixel(Request $request)
+    {
+        $shop = $request->attributes->get('shop');
+
+        if (! $shop->isInstalled()) {
+            return back()->with('test_error', 'Store is not installed — reinstall the app first.');
+        }
+
+        try {
+            $outcome = PostInstallSetup::runNow($shop->fresh());
+        } catch (Throwable $e) {
+            return back()->with(
+                'test_error',
+                'Could not reach Shopify: '.$e->getMessage()
+            );
+        }
+
+        if ($outcome['ok'] ?? false) {
+            return back()->with(
+                'pixel_ok',
+                'Shopify web pixel connected ('.$outcome['web_pixel_id'].'). Open the storefront — events should start flowing within a minute. Refresh Shopify admin → Apps → Reach to confirm Pixels = Connected.'
+            );
+        }
+
+        return back()->with(
+            'test_error',
+            'Could not activate the web pixel: '.($outcome['error'] ?? 'unknown')
+            .'. Make sure the Reach Pixel extension is deployed (`shopify app deploy`) and the app has the write_pixels scope.'
+        );
     }
 
     /**
@@ -81,13 +150,13 @@ class SettingsController extends Controller
         }
 
         $event = app(EventMapper::class)->build('TestEvent', [
-            'event_time'     => time(),
-            'event_id'       => 'reach-test-'.time(),
-            'source_url'     => 'https://'.$shop->shopify_domain,
-            'shop_domain'    => $shop->shopify_domain,
+            'event_time'        => time(),
+            'event_id'          => 'reach-test-'.time(),
+            'source_url'        => 'https://'.$shop->shopify_domain,
+            'shop_domain'       => $shop->shopify_domain,
             'custom_event_name' => 'reach_test_connection',
-            'value'          => 1.00,
-            'currency'       => 'USD',
+            'value'             => 1.00,
+            'currency'          => 'USD',
         ]);
 
         // validate_only=true so the test never pollutes the merchant's reporting.
@@ -121,6 +190,12 @@ class SettingsController extends Controller
                 $messages[] = 'Advertiser API key failed (HTTP '
                     .($adv['status'] ?? 'n/a').') — CAPI still works; fix the Ads Manager key if you need account tooling.';
             }
+        }
+
+        // Surface Shopify pixel status in the same toast so merchants know
+        // whether storefront events will actually fire.
+        if (! $shop->webPixelActive()) {
+            $messages[] = 'Warning: Shopify web pixel is still disconnected — click “Reconnect pixel”.';
         }
 
         return back()->withInput()->with('test_ok', implode(' ', $messages));

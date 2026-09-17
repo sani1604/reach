@@ -6,6 +6,79 @@
     <h1 class="page-title">Dashboard</h1>
     <p class="page-sub">Your OpenAI Ads funnel, revenue and top products — last 30 days.</p>
 
+    @php $t = $stats['tracking'] ?? []; @endphp
+    <div class="card mb-16 tracking-status {{ ($t['active'] ?? false) ? 'is-active' : 'is-warn' }}">
+        <div class="tracking-head">
+            <div>
+                <div class="tracking-title">
+                    Tracking status
+                    @if ($t['active'] ?? false)
+                        <span class="tag green">Active</span>
+                    @elseif ($t['web_pixel'] ?? false)
+                        <span class="tag amber">Needs credentials</span>
+                    @else
+                        <span class="tag amber">Disconnected</span>
+                    @endif
+                </div>
+                <div class="tracking-checks">
+                    <span class="{{ ($t['web_pixel'] ?? false) ? 'ok' : 'bad' }}">
+                        {{ ($t['web_pixel'] ?? false) ? '✓' : '○' }} Shopify pixel
+                        {{ ($t['web_pixel'] ?? false) ? 'connected' : 'disconnected' }}
+                    </span>
+                    <span class="{{ ($t['openai_pixel'] ?? false) ? 'ok' : 'bad' }}">
+                        {{ ($t['openai_pixel'] ?? false) ? '✓' : '○' }} OpenAI Pixel ID
+                    </span>
+                    <span class="{{ ($t['capi'] ?? false) ? 'ok' : 'bad' }}">
+                        {{ ($t['capi'] ?? false) ? '✓' : '○' }} Server-side CAPI
+                    </span>
+                    <span class="ok">✓ Event taxonomy</span>
+                </div>
+                <div class="tracking-meta muted small">
+                    @if (!empty($t['last_event_at']))
+                        Last event {{ $t['last_event_at']->diffForHumans() }}
+                        · {{ number_format((int) ($t['today'] ?? 0)) }} events today
+                    @else
+                        No events yet
+                        @if (!($t['web_pixel'] ?? false))
+                            — Shopify pixel is disconnected. Open Settings and click <strong>Reconnect pixel</strong>.
+                        @elseif (!($t['capi'] ?? false))
+                            — add your OpenAI Pixel ID + Conversions API key in Settings.
+                        @else
+                            — visit the storefront to generate the first PageView.
+                        @endif
+                    @endif
+                </div>
+            </div>
+            <div class="tracking-actions">
+                @if (!($t['web_pixel'] ?? false))
+                    <form method="POST" action="{{ route('settings.reconnect-pixel') }}">
+                        @csrf
+                        <button class="btn btn-primary btn-sm" type="submit">Reconnect pixel</button>
+                    </form>
+                @endif
+                <a class="btn btn-ghost btn-sm" href="{{ route('settings') }}">Settings</a>
+            </div>
+        </div>
+
+        <div class="tracking-funnel">
+            @php
+                $mini = [
+                    'Page views'   => $t['counts']['PageView'] ?? 0,
+                    'Product views'=> $t['counts']['ViewContent'] ?? 0,
+                    'Add to cart'  => $t['counts']['AddToCart'] ?? 0,
+                    'Checkout'     => $t['counts']['InitiateCheckout'] ?? 0,
+                    'Orders'       => $t['counts']['Purchase'] ?? 0,
+                ];
+            @endphp
+            @foreach ($mini as $label => $count)
+                <div class="tf-cell {{ $count > 0 ? 'has' : 'empty' }}">
+                    <div class="tf-label">{{ $label }}</div>
+                    <div class="tf-count">{{ number_format((int) $count) }}</div>
+                </div>
+            @endforeach
+        </div>
+    </div>
+
     <div class="grid stats mb-16">
         <div class="stat">
             <div class="label">Net revenue from OpenAI Ads</div>

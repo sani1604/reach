@@ -150,12 +150,14 @@ class ReachAuthAndBillingTest extends TestCase
         Http::fake([
             'test-store.myshopify.com/admin/api/*/graphql.json' => Http::response([
                 'data' => [
+                    'webPixel' => null,
                     'webPixelCreate' => [
                         'userErrors' => [],
                         'webPixel'   => ['id' => 'gid://shopify/WebPixel/99'],
                     ],
                 ],
             ], 200),
+            'test-store.myshopify.com/admin/api/*/webhooks.json' => Http::response(['webhooks' => []], 200),
         ]);
 
         $this->actingAsShop()
@@ -171,6 +173,41 @@ class ReachAuthAndBillingTest extends TestCase
         $this->assertSame('OA-PIXEL-999', $this->shop->pixel_id);
         $this->assertSame('sk-svc-test', $this->shop->capi_token);
         $this->assertSame('ads-manager-key-abc', $this->shop->advertiser_api_key);
+        $this->assertSame('gid://shopify/WebPixel/99', $this->shop->web_pixel_id);
+    }
+
+    public function test_reconnect_pixel_activates_web_pixel(): void
+    {
+        Http::fake([
+            'test-store.myshopify.com/admin/api/*/graphql.json' => Http::sequence()
+                ->push(['data' => ['webPixel' => null]], 200) // fetch
+                ->push([
+                    'data' => [
+                        'webPixelCreate' => [
+                            'userErrors' => [],
+                            'webPixel'   => ['id' => 'gid://shopify/WebPixel/55'],
+                        ],
+                    ],
+                ], 200),
+            'test-store.myshopify.com/admin/api/*/webhooks.json' => Http::response(['webhooks' => []], 200),
+        ]);
+
+        $this->actingAsShop()
+            ->post('/settings/reconnect-pixel')
+            ->assertRedirect()
+            ->assertSessionHas('pixel_ok');
+
+        $this->shop->refresh();
+        $this->assertSame('gid://shopify/WebPixel/55', $this->shop->web_pixel_id);
+        $this->assertTrue($this->shop->webPixelActive());
+    }
+
+    public function test_dashboard_shows_tracking_status(): void
+    {
+        $this->actingAsShop()
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertSee('Tracking status');
     }
 
     /* ---------- Live dashboard endpoint ---------- */
@@ -249,14 +286,17 @@ class ReachAuthAndBillingTest extends TestCase
             ], 200),
             'test-store.myshopify.com/admin/api/*/webhooks.json' => Http::response(['webhooks' => []], 200),
             'test-store.myshopify.com/admin/api/*/webhooks' => Http::response([], 201),
-            'test-store.myshopify.com/admin/api/*/graphql.json' => Http::response([
-                'data' => [
-                    'webPixelCreate' => [
-                        'userErrors' => [],
-                        'webPixel'   => ['id' => 'gid://shopify/WebPixelActivation/42'],
+            'test-store.myshopify.com/admin/api/*/graphql.json' => Http::sequence()
+                ->push(['data' => ['webPixel' => null]], 200)
+                ->push([
+                    'data' => [
+                        'webPixelCreate' => [
+                            'userErrors' => [],
+                            'webPixel'   => ['id' => 'gid://shopify/WebPixelActivation/42'],
+                        ],
                     ],
-                ],
-            ], 200),
+                ], 200)
+                ->push(['data' => ['webPixel' => ['id' => 'gid://shopify/WebPixelActivation/42']]], 200),
         ]);
 
         $state = 'test-state-123';
@@ -289,6 +329,7 @@ class ReachAuthAndBillingTest extends TestCase
 
         $shop = Shop::where('shopify_domain', 'test-store.myshopify.com')->first();
         $this->assertNotEquals('gid://shopify/WebPixelActivation/42', $shop->pixel_id);
+        $this->assertTrue($shop->webPixelActive());
     }
 
     public function test_oauth_callback_rejects_invalid_state(): void
@@ -375,14 +416,16 @@ class ReachAuthAndBillingTest extends TestCase
             ], 200),
             'fresh-store.myshopify.com/admin/api/*/webhooks.json' => Http::response(['webhooks' => []], 200),
             'fresh-store.myshopify.com/admin/api/*/webhooks' => Http::response([], 201),
-            'fresh-store.myshopify.com/admin/api/*/graphql.json' => Http::response([
-                'data' => [
-                    'webPixelCreate' => [
-                        'userErrors' => [],
-                        'webPixel'   => ['id' => 'gid://shopify/WebPixelActivation/7'],
+            'fresh-store.myshopify.com/admin/api/*/graphql.json' => Http::sequence()
+                ->push(['data' => ['webPixel' => null]], 200)
+                ->push([
+                    'data' => [
+                        'webPixelCreate' => [
+                            'userErrors' => [],
+                            'webPixel'   => ['id' => 'gid://shopify/WebPixelActivation/7'],
+                        ],
                     ],
-                ],
-            ], 200),
+                ], 200),
         ]);
 
         $token = $this->sessionToken([], 'fresh-store.myshopify.com');
@@ -404,6 +447,7 @@ class ReachAuthAndBillingTest extends TestCase
         $this->assertNotNull($shop->token_expires_at);
         $this->assertTrue($shop->token_expires_at->isFuture());
         $this->assertNull($shop->pixel_id); // OpenAI Pixel ID is merchant-supplied
+        $this->assertTrue($shop->webPixelActive());
     }
 
     /* ---------- helpers ---------- */

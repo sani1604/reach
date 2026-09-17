@@ -178,6 +178,35 @@ textarea { resize: vertical; }
 .page-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 4px; }
 .page-sub { color: var(--muted); margin: 0 0 24px; }
 
+/* ---------- Tracking status strip (dashboard) ---------- */
+.tracking-status { padding: 18px 22px; }
+.tracking-status.is-active { border-color: #a7f3d0; background: linear-gradient(180deg, #ecfdf5 0%, #fff 48%); }
+.tracking-status.is-warn { border-color: #fde68a; background: linear-gradient(180deg, #fffbeb 0%, #fff 48%); }
+.tracking-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.tracking-title { font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.tracking-checks { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.tracking-checks .ok { color: var(--green); }
+.tracking-checks .bad { color: #b45309; }
+.tracking-meta { margin-top: 2px; }
+.tracking-actions { display: flex; gap: 8px; align-items: center; }
+.tracking-funnel {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+@media (max-width: 720px) { .tracking-funnel { grid-template-columns: repeat(2, 1fr); } }
+.tf-cell {
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px;
+}
+.tf-cell.has { border-color: #a7f3d0; background: #f0fdf4; }
+.tf-cell.empty { opacity: .72; }
+.tf-label { color: var(--muted); font-size: 12px; font-weight: 600; }
+.tf-count { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; }
+.tf-cell.empty .tf-count { color: var(--muted); }
+
+.alert { gap: 12px; }
+.alert form { margin: 0; }
+
 .muted { color: var(--muted); }
 .small { font-size: 12.5px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }

@@ -90,15 +90,28 @@ class ShopifyAuthController extends Controller
             $needsSetup = true;
         }
 
-        // First contact with the store: register webhooks + activate the
-        // web pixel extension (queued so the boot stays fast).
-        if ($needsSetup || ! $shop->pixelConfigured()) {
-            PostInstallSetup::dispatch($shop->id)->onQueue('default');
+        // First contact / missing Customer Events pixel: register webhooks +
+        // activate the web pixel. web_pixel_id is the Shopify GID — do NOT
+        // gate on pixelConfigured() (that's the merchant's OpenAI Pixel ID).
+        //
+        // Run SYNCHRONOUSLY first so Shopify admin flips from
+        // "Pixels: Disconnected" immediately, even when no queue worker is up.
+        // Also queue a follow-up in case the extension isn't fully propagated yet.
+        if ($needsSetup || ! $shop->webPixelActive()) {
+            $shop = $shop->fresh() ?? $shop;
+            $outcome = PostInstallSetup::runNow($shop);
+
+            if (! ($outcome['ok'] ?? false)) {
+                PostInstallSetup::dispatch($shop->id)->onQueue('default');
+            }
         }
 
         session(['shop' => $domain]);
 
-        return response()->json(['ok' => true]);
+        return response()->json([
+            'ok'           => true,
+            'web_pixel_id' => $shop->fresh()?->web_pixel_id,
+        ]);
     }
 
     /**
@@ -174,7 +187,13 @@ class ShopifyAuthController extends Controller
 
         session(['shop' => $domain]);
 
-        PostInstallSetup::dispatch($shop->id)->onQueue('default');
+        // Activate the Customer Events web pixel right away so Shopify admin
+        // does not show "Pixels: Disconnected" after install. Queue a retry
+        // in case the extension hasn't finished propagating from deploy yet.
+        $outcome = PostInstallSetup::runNow($shop);
+        if (! ($outcome['ok'] ?? false)) {
+            PostInstallSetup::dispatch($shop->id)->onQueue('default');
+        }
 
         // Return the merchant to the app inside the Shopify admin. The admin
         // app URL has no sub-path — /apps/{handle}/{anything} renders the

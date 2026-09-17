@@ -1,26 +1,14 @@
-# Reach Order Enrichment — checkout UI extension.
-#
-# Renders (invisibly) on the Thank You page and hands the confirmed order id
-# to the Reach app so a server-side Purchase event can be joined to the
-# visitor's click IDs (fbc/fbp) for cross-device CAPI matching.
-#
-# Deployed with `shopify app deploy`. Per-store activation is automatic for
-# UI extensions (unlike web pixels, which also need webPixelCreate).
-
 api_version = "2026-07"
 
-[[extensions]]
 name = "Reach Order Enrichment"
 handle = "reach-order-enrichment"
 type = "ui_extension"
 uid = "09f0d9c5-709d-41f0-bf6d-5644d874689e"
 
-[[extensions.targeting]]
+[[targeting]]
 module = "./src/index.js"
 target = "purchase.thank-you.block.render"
 
-[extensions.capabilities]
-# Allows fetch() to the Reach app from the checkout sandbox.
+[capabilities]
 network_access = true
-# Never block the thank-you page on this extension.
 block_progress = false

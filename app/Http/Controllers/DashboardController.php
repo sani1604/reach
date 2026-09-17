@@ -19,6 +19,21 @@ class DashboardController extends Controller
         $shop = $request->attributes->get('shop');
         $since = now()->subDays(30);
 
+        // Self-heal disconnected Customer Events pixel (Shopify admin shows
+        // "Pixels: Disconnected" when webPixelCreate never ran). Best-effort —
+        // never block the dashboard if Shopify is slow.
+        if ($shop->isInstalled() && ! $shop->webPixelActive()) {
+            try {
+                \App\Jobs\PostInstallSetup::runNow($shop);
+                $shop = $shop->fresh() ?? $shop;
+            } catch (\Throwable $e) {
+                logger()->warning('Auto web-pixel connect on dashboard failed', [
+                    'shop'  => $shop->shopify_domain,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         $base = $shop->events()->where('occurred_at', '>=', $since);
 
         $counts = (clone $base)
@@ -51,6 +66,23 @@ class DashboardController extends Controller
         $lastHour = $shop->events()->where('occurred_at', '>=', now()->subHour())->count();
         $maxEventId = (int) ($shop->events()->max('id') ?? 0);
 
+        $lastEventAt = $shop->events()->max('occurred_at');
+        $tracking = [
+            'web_pixel'     => $shop->webPixelActive(),
+            'openai_pixel'  => $shop->pixelConfigured(),
+            'capi'          => $shop->capiReady(),
+            'active'        => $shop->webPixelActive() && $shop->capiReady(),
+            'last_event_at' => $lastEventAt ? \Carbon\Carbon::parse($lastEventAt) : null,
+            'today'         => $todayCount,
+            'counts'        => [
+                'PageView'         => (int) ($counts['PageView'] ?? 0),
+                'ViewContent'      => (int) ($counts['ViewContent'] ?? 0),
+                'AddToCart'        => (int) ($counts['AddToCart'] ?? 0),
+                'InitiateCheckout' => (int) ($counts['InitiateCheckout'] ?? 0),
+                'Purchase'         => (int) ($counts['Purchase'] ?? 0),
+            ],
+        ];
+
         $daily = (clone $base)
             ->selectRaw('DATE(occurred_at) as d, COUNT(*) as c')
             ->groupBy('d')
@@ -79,7 +111,8 @@ class DashboardController extends Controller
             'lastHour',
             'chart',
             'topProducts',
-            'topCampaigns'
+            'topCampaigns',
+            'tracking'
         );
 
         return view('dashboard', compact('shop', 'stats', 'recent', 'maxEventId'));
