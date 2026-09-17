@@ -3,17 +3,49 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | OpenAI Ads — Conversions API (CAPI) + browser pixel
+    | OpenAI Ads — Conversions API (CAPI) + browser Measurement Pixel
     |--------------------------------------------------------------------------
-    | The payload follows the Meta Conversions API shape, per product spec:
-    |   { "data": [ { "event_name", "event_time", "event_id",
-    |                 "action_source", "user_data", "custom_data" } ] }
-    | Endpoints/tokens are configurable so real OpenAI Ads credentials can be
-    | dropped in without touching code.
+    | Official shape (see https://developers.openai.com/ads/conversions-api):
+    |
+    |   POST https://bzr.openai.com/v1/events?pid={PIXEL_ID}
+    |   Authorization: Bearer {CAPI_KEY}
+    |   {
+    |     "validate_only": false,
+    |     "integration_source": "reach_shopify",
+    |     "events": [{
+    |       "id": "...",
+    |       "type": "order_created",
+    |       "timestamp_ms": 1773892800000,
+    |       "action_source": "web",
+    |       "source_url": "https://…",
+    |       "oppref": "…",
+    |       "user": { "emails_sha256": […], … },
+    |       "data": { "type": "contents", "amount": 2599, "currency": "USD" }
+    |     }]
+    |   }
+    |
+    | Browser SDK: https://bzrcdn.openai.com/sdk/oaiq.min.js  (window.oaiq)
     */
-    'capi_url'          => env('OPENAI_CAPI_URL', 'https://capi.openai.com/v1/events'),
-    'capi_token'        => env('OPENAI_CAPI_TOKEN'),
-    'browser_pixel_url' => env('OPENAI_BROWSER_PIXEL_URL', 'https://pixel.openai.com'),
+    'capi_url'            => env('OPENAI_CAPI_URL', 'https://bzr.openai.com/v1/events'),
+    'capi_token'          => env('OPENAI_CAPI_TOKEN'),
+    'browser_pixel_url'   => env('OPENAI_BROWSER_PIXEL_URL', 'https://bzrcdn.openai.com/sdk/oaiq.min.js'),
+    'advertiser_api_url'  => env('OPENAI_ADS_API_URL', 'https://api.ads.openai.com/v1'),
+    'integration_source'  => env('OPENAI_INTEGRATION_SOURCE', 'reach_shopify'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Internal dashboard event name  →  OpenAI Ads event type
+    |--------------------------------------------------------------------------
+    */
+    'event_types' => [
+        'PageView'           => 'page_viewed',
+        'ViewContent'        => 'contents_viewed',
+        'AddToCart'          => 'items_added',
+        'InitiateCheckout'   => 'checkout_started',
+        'Purchase'           => 'order_created',
+        'PurchaseCancelled'  => 'custom',
+        'TestEvent'          => 'custom',
+    ],
 
     /*
     |--------------------------------------------------------------------------

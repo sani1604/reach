@@ -26,13 +26,15 @@ class SeedDemoData extends Command
     {
         $shop = Shop::firstOrNew(['shopify_domain' => 'demo-store.myshopify.com']);
         $shop->fill([
-            'access_token'  => 'demo-token',
-            'plan'          => 'free',
-            'plan_status'   => null,
-            'pixel_id'      => 'DEMO-PIXEL-123456',
-            'capi_token'    => 'demo-capi-token',
-            'installed_at'  => $shop->installed_at ?? now()->subDays(20),
-            'uninstalled_at'=> null,
+            'access_token'       => 'demo-token',
+            'plan'               => 'free',
+            'plan_status'        => null,
+            'pixel_id'           => 'DEMO-PIXEL-123456',   // OpenAI Ads Pixel ID
+            'capi_token'         => 'demo-capi-token',
+            'web_pixel_id'       => 'gid://shopify/WebPixel/demo',
+            'advertiser_api_key' => null,
+            'installed_at'       => $shop->installed_at ?? now()->subDays(20),
+            'uninstalled_at'     => null,
         ]);
         $shop->save();
 

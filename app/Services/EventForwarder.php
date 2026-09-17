@@ -16,8 +16,12 @@ class EventForwarder
     }
 
     /**
-     * Log a browser-side event (the storefront pixel already fired it to
-     * OpenAI directly; here we record it for the dashboard).
+     * Log a browser-side event AND forward it server-side to the OpenAI
+     * Conversions API. The browser Measurement Pixel (oaiq) may also fire the
+     * same event_id for dual delivery + OpenAI-side dedup.
+     *
+     * Previously this only wrote to the local dashboard — events never reached
+     * OpenAI from the storefront path, which is why "events are not firing".
      */
     public function recordBrowser(Shop $shop, string $eventName, array $data): ?Event
     {
@@ -25,7 +29,15 @@ class EventForwarder
         $dedupKey = $data['dedup_key']
             ?? "browser:{$eventName}:{$eventId}";
 
-        return $this->deduper->register($shop, $eventName, $eventId, $dedupKey, 'browser', [
+        // Attach shop domain so the mapper can fill source_url when missing.
+        if (empty($data['shop_domain'])) {
+            $data['shop_domain'] = $shop->shopify_domain;
+        }
+        if (empty($data['source_url']) && empty($data['url'])) {
+            $data['source_url'] = 'https://'.$shop->shopify_domain;
+        }
+
+        $event = $this->deduper->register($shop, $eventName, $eventId, $dedupKey, 'browser', [
             'currency'    => $data['currency'] ?? null,
             'value'       => $data['value'] ?? null,
             'occurred_at' => isset($data['event_time'])
@@ -33,6 +45,17 @@ class EventForwarder
                 : now(),
             'payload'     => $data,
         ]);
+
+        // Forward every browser event server-side so ad-blockers / Safari ITP
+        // cannot drop the signal. OpenAI dedups on (pixel_id, type, id).
+        if ($event && $shop->capiReady()) {
+            $payload = $data;
+            $payload['event_id'] = $eventId;
+            SendCapiEvent::dispatch($shop->id, $this->mapper->build($eventName, $payload))
+                ->onQueue('capi');
+        }
+
+        return $event;
     }
 
     /**
@@ -44,6 +67,13 @@ class EventForwarder
         $dedupKey = $data['dedup_key']
             ?? "server:{$eventName}:".($meta['dedup_key'] ?? $eventId);
 
+        if (empty($data['shop_domain'])) {
+            $data['shop_domain'] = $shop->shopify_domain;
+        }
+        if (empty($data['source_url']) && empty($data['url'])) {
+            $data['source_url'] = 'https://'.$shop->shopify_domain;
+        }
+
         $event = $this->deduper->register($shop, $eventName, $eventId, $dedupKey, 'server', [
             'order_id'    => $data['order_id'] ?? null,
             'order_name'  => $data['order_name'] ?? null,
@@ -53,8 +83,10 @@ class EventForwarder
             'payload'     => $data,
         ]);
 
-        if ($event && $shop->pixelConfigured()) {
-            SendCapiEvent::dispatch($shop->id, $this->mapper->build($eventName, $data))
+        if ($event && $shop->capiReady()) {
+            $payload = $data;
+            $payload['event_id'] = $eventId;
+            SendCapiEvent::dispatch($shop->id, $this->mapper->build($eventName, $payload))
                 ->onQueue('capi');
         }
 

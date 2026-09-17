@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\Shop;
 use App\Models\Visitor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ReachEnrichmentTest extends TestCase
@@ -18,6 +19,10 @@ class ReachEnrichmentTest extends TestCase
     {
         parent::setUp();
         config(['shopify.api_secret' => 'test-secret']);
+        Http::fake([
+            'bzr.openai.com/*' => Http::response(['ok' => true], 200),
+            '*'                => Http::response(['ok' => true], 200),
+        ]);
 
         $this->shop = Shop::create([
             'shopify_domain' => 'test-store.myshopify.com',

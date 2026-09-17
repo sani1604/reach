@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 class ApiController extends Controller
 {
     /**
-     * Public pixel config for the storefront tracker.
+     * Public pixel config for the storefront tracker / web pixel extension.
      */
     public function pixelConfig(Request $request)
     {
@@ -31,13 +31,21 @@ class ApiController extends Controller
             'shop'              => $domain,
             'pixel_id'          => $shop->pixel_id,
             'browser_pixel_url' => config('ads.browser_pixel_url'),
-            'events'            => ['PageView', 'ViewContent', 'AddToCart', 'InitiateCheckout', 'Purchase'],
-            'version'           => '1.0',
+            'capi_ready'        => $shop->capiReady(),
+            'events'            => [
+                'PageView'         => 'page_viewed',
+                'ViewContent'      => 'contents_viewed',
+                'AddToCart'        => 'items_added',
+                'InitiateCheckout' => 'checkout_started',
+                'Purchase'         => 'order_created',
+            ],
+            'version'           => '2.0',
         ]);
     }
 
     /**
-     * Receive a browser event from the storefront pixel (sendBeacon POST).
+     * Receive a browser event from the storefront pixel / web pixel extension.
+     * Records it on the dashboard and forwards it server-side to OpenAI CAPI.
      */
     public function track(Request $request)
     {
@@ -57,7 +65,9 @@ class ApiController extends Controller
         $standard = $this->standardName((string) $eventName);
 
         // Purchase is server-authoritative (order webhooks); skip browser
-        // duplicates so revenue is never double-counted.
+        // duplicates so revenue is never double-counted on the dashboard.
+        // (The browser Measurement Pixel may still fire order_created for
+        // OpenAI-side dual delivery with the same event_id.)
         if ($standard === 'Purchase') {
             return response()->json(['ok' => true, 'skipped' => true]);
         }
@@ -65,13 +75,44 @@ class ApiController extends Controller
         if (! is_array($data)) {
             $data = [];
         }
-        $data['event_time'] = (int) ($data['event_time'] ?? time());
-        $data['event_id'] = (string) ($data['event_id'] ?? Str::uuid());
 
-        // Fold click IDs (fbc/fbp) into the stored payload for cross-device matching.
+        $data['event_time'] = (int) ($data['event_time'] ?? $request->input('event_time') ?? time());
+        $data['event_id'] = (string) (
+            $data['event_id']
+            ?? $request->input('event_id')
+            ?? Str::uuid()
+        );
+
+        // Fold click IDs + OpenAI attribution ids into the stored payload.
         $userData = $request->input('user_data', []);
-        if (is_array($userData) && $userData) {
+        if (! is_array($userData)) {
+            $userData = [];
+        }
+
+        foreach (['fbc', 'fbp', 'oppref', 'obref', 'email', 'phone'] as $key) {
+            if ($request->filled($key) && empty($userData[$key])) {
+                $userData[$key] = $request->input($key);
+            }
+            if (! empty($data[$key]) && empty($userData[$key])) {
+                $userData[$key] = $data[$key];
+            }
+        }
+
+        // IP / UA for server-side matching (pixel runtime may not send these).
+        if (empty($userData['ip_address']) && empty($userData['client_ip_address'])) {
+            $userData['client_ip_address'] = $request->ip();
+        }
+        if (empty($userData['user_agent']) && empty($userData['client_user_agent'])) {
+            $userData['client_user_agent'] = (string) $request->userAgent();
+        }
+
+        if ($userData) {
             $data['user_data'] = array_merge($data['user_data'] ?? [], $userData);
+        }
+
+        // Promote oppref to top-level for the CAPI mapper.
+        if (! empty($data['user_data']['oppref']) && empty($data['oppref'])) {
+            $data['oppref'] = $data['user_data']['oppref'];
         }
 
         // Flatten the OpenAI-style custom_data the tracker may pass through.
@@ -79,12 +120,22 @@ class ApiController extends Controller
             $data = array_merge($data, $data['custom_data']);
         }
 
+        // Source URL for web events (required by OpenAI CAPI).
+        if (empty($data['source_url']) && empty($data['url'])) {
+            $data['source_url'] = $request->input('url')
+                ?: $request->headers->get('Referer')
+                ?: ('https://'.$shop->shopify_domain);
+        }
+        $data['shop_domain'] = $shop->shopify_domain;
+
         // Update the visitor identity bridge (vid + click ids + email/phone).
         app(VisitorBridge::class)->upsert($shop, [
             'vid'       => $request->input('vid'),
             'user_data' => $data['user_data'] ?? [],
-            'email'     => $data['email'] ?? null,
-            'phone'     => $data['phone'] ?? null,
+            'email'     => $data['email'] ?? ($data['user_data']['email'] ?? null),
+            'phone'     => $data['phone'] ?? ($data['user_data']['phone'] ?? null),
+            'oppref'    => $data['oppref'] ?? null,
+            'obref'     => $data['user_data']['obref'] ?? null,
         ]);
 
         app(EventForwarder::class)->recordBrowser($shop, $standard, $data);
@@ -122,17 +173,33 @@ class ApiController extends Controller
         }
         $vid = $request->input('vid');
 
+        // Lift top-level attribution ids into data.
+        foreach (['oppref', 'obref', 'fbc', 'fbp', 'email', 'phone'] as $key) {
+            if ($request->filled($key) && empty($data[$key])) {
+                $data[$key] = $request->input($key);
+            }
+        }
+
         $bridge = app(VisitorBridge::class);
 
         $bridge->upsert($shop, [
             'vid'       => $vid,
-            'user_data' => ['fbc' => $data['fbc'] ?? null, 'fbp' => $data['fbp'] ?? null],
+            'user_data' => [
+                'fbc'    => $data['fbc'] ?? null,
+                'fbp'    => $data['fbp'] ?? null,
+                'oppref' => $data['oppref'] ?? null,
+                'obref'  => $data['obref'] ?? null,
+            ],
             'email'     => $data['email'] ?? null,
             'phone'     => $data['phone'] ?? null,
             'order_id'  => $data['order_id'] ?? null,
+            'oppref'    => $data['oppref'] ?? null,
+            'obref'     => $data['obref'] ?? null,
         ]);
 
-        $enriched = $bridge->enrichPurchase($shop, $data);
+        $enriched = $bridge->enrichPurchase($shop, array_merge($data, [
+            'vid' => $vid,
+        ]));
 
         return response()->json(['ok' => true, 'enriched' => $enriched]);
     }
@@ -140,17 +207,30 @@ class ApiController extends Controller
     protected function standardName(string $name): string
     {
         $map = [
+            // Shopify Customer Events
             'page_viewed'            => 'PageView',
-            'pageview'               => 'PageView',
-            'viewcontent'            => 'ViewContent',
             'product_viewed'         => 'ViewContent',
-            'addtocart'              => 'AddToCart',
             'product_added_to_cart'  => 'AddToCart',
-            'initiatecheckout'       => 'InitiateCheckout',
             'checkout_started'       => 'InitiateCheckout',
+            'checkout_completed'     => 'Purchase',
+            // OpenAI Ads taxonomy
+            'pageview'               => 'PageView',
+            'page_view'              => 'PageView',
+            'viewcontent'            => 'ViewContent',
+            'contents_viewed'        => 'ViewContent',
+            'addtocart'              => 'AddToCart',
+            'items_added'            => 'AddToCart',
+            'initiatecheckout'       => 'InitiateCheckout',
             'purchase'               => 'Purchase',
+            'order_created'          => 'Purchase',
+            // Internal names (pass-through)
+            'PageView'               => 'PageView',
+            'ViewContent'            => 'ViewContent',
+            'AddToCart'              => 'AddToCart',
+            'InitiateCheckout'       => 'InitiateCheckout',
+            'Purchase'               => 'Purchase',
         ];
 
-        return $map[strtolower($name)] ?? $name;
+        return $map[$name] ?? ($map[strtolower($name)] ?? $name);
     }
 }

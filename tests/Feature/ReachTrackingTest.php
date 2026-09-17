@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Event;
 use App\Models\Shop;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ReachTrackingTest extends TestCase
@@ -17,13 +18,39 @@ class ReachTrackingTest extends TestCase
     {
         parent::setUp();
         config(['shopify.api_secret' => 'test-secret']);
+        Http::fake([
+            'bzr.openai.com/*' => Http::response(['ok' => true], 200),
+            '*'                => Http::response(['ok' => true], 200),
+        ]);
 
         $this->shop = Shop::create([
             'shopify_domain' => 'test-store.myshopify.com',
             'access_token'   => 'token',
             'pixel_id'       => 'PX-123',
+            'capi_token'     => 'capi-key',
             'installed_at'   => now(),
         ]);
+    }
+
+    public function test_browser_event_is_forwarded_to_capi(): void
+    {
+        $this->postJson('/api/track', [
+            'shop'       => 'test-store.myshopify.com',
+            'event_name' => 'PageView',
+            'data'       => [
+                'event_id' => 'px-page-1',
+                'url'      => 'https://test-store.myshopify.com/',
+            ],
+        ])->assertStatus(202);
+
+        Http::assertSent(function ($request) {
+            $url = $request->url();
+            $body = $request->data();
+
+            return str_contains($url, 'pid=PX-123')
+                && ($body['events'][0]['type'] ?? null) === 'page_viewed'
+                && ($body['events'][0]['id'] ?? null) === 'px-page-1';
+        });
     }
 
     public function test_pixel_config_is_enabled_for_installed_shop(): void
@@ -58,6 +85,45 @@ class ReachTrackingTest extends TestCase
             'event_name' => 'AddToCart',
             'source'     => 'browser',
         ]);
+    }
+
+    public function test_track_accepts_openai_event_names_and_oppref(): void
+    {
+        $this->postJson('/api/track', [
+            'shop'       => 'test-store.myshopify.com',
+            'event_name' => 'items_added',
+            'vid'        => 'visitor-oppref',
+            'data'       => [
+                'value'    => 499,
+                'currency' => 'USD',
+                'oppref'   => 'oppref_abc123',
+                'obref'    => 'obref-uuid-1',
+            ],
+        ])->assertStatus(202);
+
+        $this->assertDatabaseHas('events', [
+            'shop_id'    => $this->shop->id,
+            'event_name' => 'AddToCart',
+            'source'     => 'browser',
+        ]);
+
+        $this->assertDatabaseHas('visitors', [
+            'shop_id' => $this->shop->id,
+            'vid'     => 'visitor-oppref',
+            'oppref'  => 'oppref_abc123',
+            'obref'   => 'obref-uuid-1',
+        ]);
+    }
+
+    public function test_gid_pixel_id_is_not_considered_configured(): void
+    {
+        $this->shop->update(['pixel_id' => 'gid://shopify/WebPixel/123']);
+
+        $this->assertFalse($this->shop->fresh()->pixelConfigured());
+
+        $this->getJson('/api/pixel-config?shop=test-store.myshopify.com')
+            ->assertOk()
+            ->assertJson(['enabled' => false]);
     }
 
     public function test_track_skips_browser_purchase(): void

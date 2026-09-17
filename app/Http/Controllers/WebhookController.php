@@ -47,7 +47,10 @@ class WebhookController extends Controller
                     'uninstalled_at' => now(),
                     'access_token'   => null,
                     'refresh_token'  => null,
-                    'pixel_id'       => null,
+                    'web_pixel_id'   => null,
+                    // Keep OpenAI credentials (pixel_id / capi_token /
+                    // advertiser_api_key) so a reinstall doesn't force the
+                    // merchant to re-paste them.
                 ]);
                 break;
 
@@ -130,21 +133,53 @@ class WebhookController extends Controller
         if (! empty($customer['phone'])) {
             $userData['phone'] = $customer['phone'];
         }
+        // Billing / shipping address helps OpenAI match when click ids are missing.
+        $addr = $data['billing_address'] ?? ($data['shipping_address'] ?? []);
+        if (! empty($addr['country_code'])) {
+            $userData['country'] = $addr['country_code'];
+        } elseif (! empty($addr['country'])) {
+            $userData['country'] = $addr['country'];
+        }
+        if (! empty($addr['city'])) {
+            $userData['city'] = $addr['city'];
+        }
+        if (! empty($addr['province'])) {
+            $userData['region'] = $addr['province'];
+        }
+        if (! empty($addr['zip'])) {
+            $userData['postal_code'] = $addr['zip'];
+        }
+        if (! empty($addr['first_name'])) {
+            $userData['first_name'] = $addr['first_name'];
+        }
+        if (! empty($addr['last_name'])) {
+            $userData['last_name'] = $addr['last_name'];
+        }
 
-        // Join click IDs (fbc/fbp) captured earlier by the browser pixel.
+        // Join OpenAI click ids (oppref/obref) + legacy fbc/fbp captured earlier.
         $userData = app(\App\Services\VisitorBridge::class)
             ->enrichUserData($shop, $userData, (string) $orderId);
 
-        app(EventForwarder::class)->recordServer($shop, 'Purchase', [
-            'event_id'   => 'purchase-'.$orderId,
-            'dedup_key'  => 'purchase:'.$orderId,
-            'order_id'   => (string) $orderId,
-            'order_name' => $data['name'] ?? null,
-            'currency'   => $data['currency'] ?? null,
-            'value'      => $data['total_price'] ?? null,
-            'products'   => $products,
-            'user_data'  => $userData,
-        ], ['dedup_key' => (string) $orderId]);
+        $payload = [
+            'event_id'    => 'purchase-'.$orderId,
+            'dedup_key'   => 'purchase:'.$orderId,
+            'order_id'    => (string) $orderId,
+            'order_name'  => $data['name'] ?? null,
+            'currency'    => $data['currency'] ?? null,
+            'value'       => $data['total_price'] ?? null,
+            'products'    => $products,
+            'user_data'   => $userData,
+            'shop_domain' => $shop->shopify_domain,
+            'source_url'  => 'https://'.$shop->shopify_domain.'/checkouts/thank-you',
+            'action_source' => 'web',
+        ];
+        if (! empty($userData['oppref'])) {
+            $payload['oppref'] = $userData['oppref'];
+        }
+
+        app(EventForwarder::class)->recordServer($shop, 'Purchase', $payload, [
+            'dedup_key' => (string) $orderId,
+        ]);
     }
 
     protected function checkoutStarted(Shop $shop, array $data): void

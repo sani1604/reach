@@ -228,37 +228,48 @@ class ShopifyClient
      * Deployed extensions are NOT active per store until the app creates a
      * web pixel. This is what makes the Reach Pixel actually appear in
      * Customer Events and start tracking. Idempotent.
+     *
+     * IMPORTANT: the Shopify WebPixel GID is stored on shops.web_pixel_id —
+     * never on shops.pixel_id (that column holds the merchant's OpenAI Ads
+     * Pixel ID). Colliding the two is what made events stop firing.
      */
     public function ensureWebPixel(Shop $shop): ?string
     {
         // The `config` setting (declared in the extension toml) carries the
-        // app URL and the shop domain so the sandboxed pixel knows where to
-        // POST events — it has no access to the merchant page's origin data.
+        // app URL, shop domain, and (when set) the OpenAI Pixel ID so the
+        // sandboxed pixel can dual-fire to OpenAI's browser SDK + Reach.
+        $config = [
+            'app_url'  => rtrim((string) config('app.url'), '/'),
+            'shop'     => $shop->shopify_domain,
+            'pixel_id' => $shop->pixelConfigured() ? $shop->pixel_id : null,
+        ];
+
         $settings = json_encode([
-            'config' => json_encode([
-                'app_url' => rtrim(config('app.url'), '/'),
-                'shop'    => $shop->shopify_domain,
-            ], JSON_UNESCAPED_SLASHES),
+            'config' => json_encode($config, JSON_UNESCAPED_SLASHES),
         ], JSON_UNESCAPED_SLASHES);
 
-        if ($shop->pixel_id) {
-            // Keep the recorded pixel's settings fresh.
+        if ($shop->web_pixel_id) {
+            // Keep the recorded pixel's settings fresh (app URL / OpenAI pixel).
             $result = $this->graphql($shop, <<<'GRAPHQL'
-            mutation WebPixelUpdate($webPixel: WebPixelInput!) {
-              webPixelUpdate(webPixel: $webPixel) {
+            mutation WebPixelUpdate($id: ID!, $webPixel: WebPixelInput!) {
+              webPixelUpdate(id: $id, webPixel: $webPixel) {
                 userErrors { field message }
                 webPixel { id }
               }
             }
-            GRAPHQL, ['webPixel' => ['settings' => $settings]]);
+            GRAPHQL, [
+                'id'       => $shop->web_pixel_id,
+                'webPixel' => ['settings' => $settings],
+            ]);
 
             if (! $this->hasUserErrors($result)) {
-                return $shop->pixel_id;
+                return $shop->web_pixel_id;
             }
 
-            // Stale pixel_id (merchant deleted the pixel in the admin) —
+            // Stale web_pixel_id (merchant deleted the pixel in the admin) —
             // fall through and create a fresh one.
-            $shop->pixel_id = null;
+            $shop->web_pixel_id = null;
+            $shop->save();
         }
 
         $result = $this->graphql($shop, <<<'GRAPHQL'
@@ -279,13 +290,13 @@ class ShopifyClient
             return null;
         }
 
-        $pixelId = $result['data']['webPixelCreate']['webPixel']['id'] ?? null;
+        $webPixelId = $result['data']['webPixelCreate']['webPixel']['id'] ?? null;
 
-        if ($pixelId) {
-            $shop->update(['pixel_id' => $pixelId]);
+        if ($webPixelId) {
+            $shop->update(['web_pixel_id' => $webPixelId]);
         }
 
-        return $pixelId;
+        return $webPixelId;
     }
 
     protected function hasUserErrors(array $result): bool

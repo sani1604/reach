@@ -90,6 +90,15 @@ class ReachAuthAndBillingTest extends TestCase
             ])
             ->assertRedirect()
             ->assertSessionHas('test_ok');
+
+        Http::assertSent(function ($request) {
+            // Official shape: ?pid=… and body.events[] with type/id/timestamp_ms.
+            return str_contains($request->url(), 'pid=PX-123')
+                && isset($request['events'][0]['type'])
+                && isset($request['events'][0]['id'])
+                && isset($request['events'][0]['timestamp_ms'])
+                && ($request['validate_only'] ?? false) === true;
+        });
     }
 
     public function test_capi_test_connection_reports_failure(): void
@@ -120,6 +129,48 @@ class ReachAuthAndBillingTest extends TestCase
             ])
             ->assertRedirect()
             ->assertSessionHas('test_error');
+    }
+
+    public function test_capi_test_requires_pixel_id(): void
+    {
+        $this->shop->update(['pixel_id' => null]);
+
+        $this->actingAsShop()
+            ->post('/settings/test', [
+                'pixel_id'   => null,
+                'capi_url'   => 'https://capi.openai.example/v1/events',
+                'capi_token' => 'capi-key',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('test_error');
+    }
+
+    public function test_settings_save_stores_advertiser_api_key(): void
+    {
+        Http::fake([
+            'test-store.myshopify.com/admin/api/*/graphql.json' => Http::response([
+                'data' => [
+                    'webPixelCreate' => [
+                        'userErrors' => [],
+                        'webPixel'   => ['id' => 'gid://shopify/WebPixel/99'],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $this->actingAsShop()
+            ->post('/settings', [
+                'pixel_id'           => 'OA-PIXEL-999',
+                'capi_token'         => 'sk-svc-test',
+                'advertiser_api_key' => 'ads-manager-key-abc',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('saved');
+
+        $this->shop->refresh();
+        $this->assertSame('OA-PIXEL-999', $this->shop->pixel_id);
+        $this->assertSame('sk-svc-test', $this->shop->capi_token);
+        $this->assertSame('ads-manager-key-abc', $this->shop->advertiser_api_key);
     }
 
     /* ---------- Live dashboard endpoint ---------- */
@@ -231,8 +282,13 @@ class ReachAuthAndBillingTest extends TestCase
             'shopify_domain' => 'test-store.myshopify.com',
             'access_token'   => 'shpca_newtoken',
             'refresh_token'  => 'shpca_refresh',
-            'pixel_id'       => 'gid://shopify/WebPixelActivation/42',
+            // Shopify WebPixel GID must land on web_pixel_id — never pixel_id
+            // (pixel_id is the merchant's OpenAI Ads Pixel ID).
+            'web_pixel_id'   => 'gid://shopify/WebPixelActivation/42',
         ]);
+
+        $shop = Shop::where('shopify_domain', 'test-store.myshopify.com')->first();
+        $this->assertNotEquals('gid://shopify/WebPixelActivation/42', $shop->pixel_id);
     }
 
     public function test_oauth_callback_rejects_invalid_state(): void
@@ -341,12 +397,13 @@ class ReachAuthAndBillingTest extends TestCase
             'shopify_domain' => 'fresh-store.myshopify.com',
             'access_token'   => 'shpca_exchanged',
             'refresh_token'  => 'shpca_refresh_exchanged',
-            'pixel_id'       => 'gid://shopify/WebPixelActivation/7',
+            'web_pixel_id'   => 'gid://shopify/WebPixelActivation/7',
         ]);
 
         $shop = Shop::where('shopify_domain', 'fresh-store.myshopify.com')->first();
         $this->assertNotNull($shop->token_expires_at);
         $this->assertTrue($shop->token_expires_at->isFuture());
+        $this->assertNull($shop->pixel_id); // OpenAI Pixel ID is merchant-supplied
     }
 
     /* ---------- helpers ---------- */

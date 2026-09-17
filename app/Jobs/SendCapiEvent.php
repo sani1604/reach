@@ -28,26 +28,30 @@ class SendCapiEvent implements ShouldQueue
     {
         $shop = Shop::find($this->shopId);
 
-        if (! $shop || ! $shop->isInstalled() || ! $shop->pixelConfigured()) {
+        if (! $shop || ! $shop->isInstalled() || ! $shop->capiReady()) {
             return;
         }
 
         $result = $capi->send($shop, $this->event);
         $status = $result['status'] ?? null;
-        $missingToken = ($result['error'] ?? null) === 'missing_token';
+        $error = $result['error'] ?? null;
+        $configError = in_array($error, ['missing_token', 'missing_pixel_id', 'empty_events'], true);
 
         // Retry transient failures (HTTP 5xx and unreachable endpoints), but
-        // never retry a missing token — that's a config problem, not transient.
-        if (($result['ok'] ?? false) === false && ! $missingToken && ($status === null || $status >= 500)) {
+        // never retry a config problem — that's a settings issue, not transient.
+        if (($result['ok'] ?? false) === false && ! $configError && ($status === null || $status >= 500)) {
             throw new \RuntimeException('OpenAI CAPI delivery failed ('.($status ?? 'unreachable').')');
         }
 
         if (($result['ok'] ?? false) === false) {
             logger()->warning('OpenAI CAPI rejected event', [
                 'shop_id'    => $this->shopId,
-                'event_name' => $this->event['event_name'] ?? null,
+                'event_type' => $this->event['type'] ?? ($this->event['event_name'] ?? null),
+                'event_id'   => $this->event['id'] ?? null,
                 'status'     => $status,
+                'error'      => $error,
                 'body'       => $result['body'] ?? null,
+                'url'        => $result['url'] ?? null,
             ]);
         }
     }

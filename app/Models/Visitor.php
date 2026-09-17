@@ -11,6 +11,8 @@ class Visitor extends Model
         'vid',
         'fbc',
         'fbp',
+        'oppref',   // OpenAI ad-click attribution id
+        'obref',    // OpenAI opaque browser reference
         'email',
         'phone',
         'order_id',

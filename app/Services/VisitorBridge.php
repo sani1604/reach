@@ -8,7 +8,8 @@ use App\Models\Shop;
 use App\Models\Visitor;
 
 /**
- * Joins browser-side click IDs (fbc/fbp) to server-side Purchase events.
+ * Joins browser-side click IDs (oppref/obref + legacy fbc/fbp) to server-side
+ * Purchase events.
  *
  * Two paths:
  *  1. Deterministic — the pixel on the order-status/thank-you page calls
@@ -34,6 +35,8 @@ class VisitorBridge
 
         $fbc     = $userData['fbc'] ?? ($input['fbc'] ?? null);
         $fbp     = $userData['fbp'] ?? ($input['fbp'] ?? null);
+        $oppref  = $userData['oppref'] ?? ($input['oppref'] ?? null);
+        $obref   = $userData['obref'] ?? ($input['obref'] ?? null);
         $email   = $input['email'] ?? ($userData['email'] ?? null);
         $phone   = $input['phone'] ?? ($userData['phone'] ?? null);
         $orderId = $input['order_id'] ?? null;
@@ -43,10 +46,12 @@ class VisitorBridge
             'vid'     => (string) $vid,
         ]);
 
-        $visitor->fbc   = $fbc ?: $visitor->fbc;
-        $visitor->fbp   = $fbp ?: $visitor->fbp;
-        $visitor->email = $email ?: $visitor->email;
-        $visitor->phone = $phone ?: $visitor->phone;
+        $visitor->fbc    = $fbc ?: $visitor->fbc;
+        $visitor->fbp    = $fbp ?: $visitor->fbp;
+        $visitor->oppref = $oppref ?: $visitor->oppref;
+        $visitor->obref  = $obref ?: $visitor->obref;
+        $visitor->email  = $email ?: $visitor->email;
+        $visitor->phone  = $phone ?: $visitor->phone;
 
         if ($orderId) {
             $visitor->order_id = (string) $orderId;
@@ -64,7 +69,8 @@ class VisitorBridge
      */
     public function enrichUserData(Shop $shop, array $userData, ?string $orderId = null): array
     {
-        if (isset($userData['fbc']) && isset($userData['fbp'])) {
+        // Already fully matched — nothing to do.
+        if (! empty($userData['oppref']) && ! empty($userData['obref'])) {
             return $userData;
         }
 
@@ -87,10 +93,13 @@ class VisitorBridge
             return $userData;
         }
 
-        $userData['fbc'] = $userData['fbc'] ?? $visitor->fbc;
-        $userData['fbp'] = $userData['fbp'] ?? $visitor->fbp;
+        $userData['fbc']    = $userData['fbc'] ?? $visitor->fbc;
+        $userData['fbp']    = $userData['fbp'] ?? $visitor->fbp;
+        $userData['oppref'] = $userData['oppref'] ?? $visitor->oppref;
+        $userData['obref']  = $userData['obref'] ?? $visitor->obref;
 
-        if (! empty($userData['fbc']) || ! empty($userData['fbp'])) {
+        if (! empty($userData['oppref']) || ! empty($userData['obref'])
+            || ! empty($userData['fbc']) || ! empty($userData['fbp'])) {
             if (empty($userData['vid']) && $visitor->vid) {
                 $userData['vid'] = $visitor->vid;
             }
@@ -113,15 +122,6 @@ class VisitorBridge
     {
         $orderId   = $data['order_id'] ?? null;
         $orderName = $data['order_name'] ?? null;
-        $fbc       = $data['fbc'] ?? null;
-        $fbp       = $data['fbp'] ?? null;
-        $vid       = $data['vid'] ?? null;
-        $email     = $data['email'] ?? null;
-        $phone     = $data['phone'] ?? null;
-
-        if (! $fbc && ! $fbp && ! $vid && ! $email && ! $phone) {
-            return false;
-        }
 
         $query = Event::where('shop_id', $shop->id)->where('event_name', 'Purchase');
         if ($orderId) {
@@ -141,9 +141,17 @@ class VisitorBridge
         $userData = $payload['user_data'] ?? [];
 
         $changed = false;
-        foreach (['fbc', 'fbp', 'vid', 'email', 'phone'] as $key) {
+        foreach (['fbc', 'fbp', 'oppref', 'obref', 'vid', 'email', 'phone'] as $key) {
             if (! empty($data[$key]) && empty($userData[$key])) {
                 $userData[$key] = $data[$key];
+                $changed = true;
+            }
+        }
+
+        // Also accept nested user_data from the pixel.
+        foreach (['fbc', 'fbp', 'oppref', 'obref'] as $key) {
+            if (! empty($data['user_data'][$key]) && empty($userData[$key])) {
+                $userData[$key] = $data['user_data'][$key];
                 $changed = true;
             }
         }
@@ -153,12 +161,18 @@ class VisitorBridge
         }
 
         $payload['user_data'] = $userData;
+        if (! empty($userData['oppref']) && empty($payload['oppref'])) {
+            $payload['oppref'] = $userData['oppref'];
+        }
         $purchase->payload = $payload;
         $purchase->save();
 
-        if ($shop->pixelConfigured()) {
+        if ($shop->capiReady()) {
             $event = app(EventMapper::class)->build('Purchase', array_merge($payload, [
-                'event_time' => $purchase->occurred_at?->timestamp ?? time(),
+                'event_id'    => $purchase->event_id,
+                'event_time'  => $purchase->occurred_at?->timestamp ?? time(),
+                'shop_domain' => $shop->shopify_domain,
+                'source_url'  => $payload['source_url'] ?? ('https://'.$shop->shopify_domain),
             ]));
             SendCapiEvent::dispatch($shop->id, $event)->onQueue('capi');
         }
