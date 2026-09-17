@@ -2,22 +2,28 @@
    Reach — design system (pure CSS, no build step)
    ============================================================ */
 :root {
-  --ink: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
-  --bg: #f8fafc;
+  /* Polaris / Shopify admin tokens (embedded app feel) */
+  --ink: #202223;
+  --muted: #6d7175;
+  --line: #e1e3e5;
+  --line-strong: #c9cccf;
+  --bg: #f6f6f7;
   --card: #ffffff;
-  --brand: #4f46e5;
-  --brand-dark: #4338ca;
-  --brand-soft: #eef2ff;
-  --saffron: #f59e0b;
-  --green: #059669;
-  --green-soft: #ecfdf5;
-  --red: #dc2626;
-  --red-soft: #fef2f2;
-  --radius: 14px;
-  --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px -12px rgba(15, 23, 42, .12);
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --brand: #2c6ecb;          /* Polaris interactive */
+  --brand-dark: #1f5199;
+  --brand-soft: #eaf4ff;
+  --saffron: #b98900;        /* Polaris warning */
+  --saffron-soft: #fff5d6;
+  --green: #008060;          /* Polaris success */
+  --green-soft: #e0f5ef;
+  --red: #d72c0d;
+  --red-soft: #fff4f4;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 0 rgba(0,0,0,.05), 0 1px 3px rgba(0,0,0,.05);
+  --shadow-card: 0 1px 0 rgba(0,0,0,.05);
+  --font: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --space-page: 20px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -39,7 +45,7 @@ body.is-embedded .app-header {
   color: var(--ink);
   line-height: 1.55;
 }
-body.is-embedded .app-main a:not(.btn):not(.seg-item) { color: var(--brand); }
+body.is-embedded .app-main a:not(.btn):not(.seg-item):not(.tag) { color: var(--brand); }
 a { color: var(--brand); text-decoration: none; }
 a:hover { color: var(--brand-dark); }
 
@@ -57,11 +63,11 @@ a:hover { color: var(--brand-dark); }
 .app-header {
   background: var(--card);
   border-bottom: 1px solid var(--line);
-  padding: 0 24px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
-  gap: 24px;
-  height: 58px;
+  gap: 20px;
+  height: 56px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -76,10 +82,10 @@ a:hover { color: var(--brand-dark); }
   color: var(--ink);
 }
 .brand .logo {
-  width: 30px; height: 30px; border-radius: 9px;
-  background: linear-gradient(135deg, var(--brand), #7c3aed);
+  width: 28px; height: 28px; border-radius: 8px;
+  background: #1a1a1a;
   color: #fff; display: flex; align-items: center; justify-content: center;
-  font-size: 15px; font-weight: 800;
+  font-size: 14px; font-weight: 700;
 }
 .app-nav { display: flex; gap: 4px; flex: 1; }
 .app-nav a {
@@ -89,17 +95,36 @@ a:hover { color: var(--brand-dark); }
 .app-nav a:hover { background: var(--bg); color: var(--ink); }
 .app-nav a.active { background: var(--brand-soft); color: var(--brand-dark); }
 
-/* Embedded in Shopify admin: primary nav lives in the admin sidebar via
-   <ui-nav-menu>. Hide the duplicate in-app strip so merchants aren't lost. */
-body.is-embedded .app-nav { display: none; }
-body.is-embedded .app-header { justify-content: space-between; }
+/* Embedded: Shopify owns chrome (sidebar nav + ui-title-bar). Never show our header. */
+body.is-embedded .app-header { display: none !important; }
+body.is-embedded {
+  background: var(--bg);
+}
+body.is-embedded .app-main.polaris-page {
+  /* Match Shopify admin page gutters */
+  max-width: 100%;
+  margin: 0;
+  padding: 20px 20px 40px;
+}
+@media (min-width: 768px) {
+  body.is-embedded .app-main.polaris-page {
+    padding: 24px 32px 48px;
+  }
+}
+@media (min-width: 1200px) {
+  body.is-embedded .app-main.polaris-page {
+    padding: 24px 40px 56px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}
 
 .plan-badge {
-  font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
-  background: var(--green-soft); color: var(--green);
+  font-size: 12px; font-weight: 550; padding: 2px 8px; border-radius: 8px;
+  background: var(--green-soft); color: #0c5132;
   white-space: nowrap;
 }
-.plan-badge.free { background: var(--brand-soft); color: var(--brand-dark); }
+.plan-badge.free { background: #e4e5e7; color: #202223; }
 
 .app-main {
   max-width: 1080px;
@@ -108,24 +133,25 @@ body.is-embedded .app-header { justify-content: space-between; }
   width: 100%;
   box-sizing: border-box;
 }
-/* Shopify admin iframe can be narrow beside the sidebar — keep content readable. */
-body.is-embedded .app-main {
-  max-width: 100%;
-  padding: 20px 20px 48px;
-}
-body.is-embedded .app-header {
-  padding: 0 16px;
-}
+/* padding for embedded is set with .polaris-page above */
 
 /* ---------- Cards & stats ---------- */
 .card {
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow);
-  padding: 22px 24px;
-  min-width: 0; /* prevent grid blowout inside Shopify admin iframe */
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 20px;
+  min-width: 0;
 }
-.card h3 { margin: 0 0 4px; font-size: 15px; }
-.card .sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+.card h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+.card .sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.45; }
 
 /* Prefer CSS grid; flex fallbacks keep layout if a host stylesheet fights grid. */
 .grid {
@@ -179,11 +205,11 @@ body.is-embedded .app-header {
 
 .stat {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 18px 20px;
+  box-shadow: var(--shadow-card); padding: 16px 18px;
 }
-.stat .label { color: var(--muted); font-size: 13px; font-weight: 600; }
-.stat .value { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; line-height: 1.15; }
-.stat .delta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat .label { color: var(--muted); font-size: 12.5px; font-weight: 550; }
+.stat .value { font-size: 22px; font-weight: 650; letter-spacing: -0.015em; margin-top: 4px; line-height: 1.2; color: var(--ink); }
+.stat .delta { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
 .stat .value.green { color: var(--green); }
 .stat .value.brand { color: var(--brand); }
 
@@ -212,10 +238,10 @@ body.is-embedded .app-header {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--brand), #8b5cf6);
+  background: var(--brand);
   min-width: 4px;
 }
-.funnel-row.highlight .funnel-fill { background: linear-gradient(90deg, var(--green), #34d399); }
+.funnel-row.highlight .funnel-fill { background: linear-gradient(90deg, var(--green), #2db88a); }
 .funnel-count {
   font-weight: 800;
   text-align: right;
@@ -260,7 +286,7 @@ body.is-embedded .app-header {
   width: 100%;
   max-width: 28px;
   background: var(--brand-soft);
-  border: 1px solid #c7d2fe;
+  border: 1px solid #b4d5f5;
   border-radius: 6px 6px 0 0;
   min-height: 2px;
   transition: background .2s, height .2s;
@@ -291,21 +317,25 @@ table.list tr:last-child td { border-bottom: 0; }
 
 /* ---------- Buttons ---------- */
 .btn {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 10px 18px; border-radius: 10px; border: 1px solid transparent;
-  font-weight: 700; font-size: 14px; cursor: pointer; transition: all .15s;
-  font-family: var(--font); text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid transparent;
+  font-weight: 550; font-size: 13px; cursor: pointer; transition: background .12s, border-color .12s, box-shadow .12s;
+  font-family: var(--font); text-decoration: none; line-height: 1.25;
+  box-shadow: 0 1px 0 rgba(0,0,0,.05);
 }
-.btn-primary { background: var(--brand); color: #fff; }
-.btn-primary:hover { background: var(--brand-dark); color: #fff; }
-.btn-saffron { background: var(--saffron); color: #fff; }
-.btn-saffron:hover { background: #d97706; color: #fff; }
-.btn-ghost { background: #fff; border-color: var(--line); color: var(--ink); }
-.btn-ghost:hover { border-color: #cbd5e1; background: var(--bg); }
-.btn-danger { background: #fff; border-color: #fecaca; color: var(--red); }
+.btn-primary { background: #1a1a1a; color: #fff; border-color: #1a1a1a; } /* Polaris primary (black) */
+.btn-primary:hover { background: #000; color: #fff; border-color: #000; }
+.btn-saffron { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn-saffron:hover { background: var(--brand-dark); color: #fff; }
+.btn-ghost {
+  background: #fff; border-color: var(--line-strong); color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+}
+.btn-ghost:hover { background: var(--bg); border-color: #8c9196; color: var(--ink); }
+.btn-danger { background: #fff; border-color: #e0b3b2; color: var(--red); }
 .btn-danger:hover { background: var(--red-soft); }
-.btn-sm { padding: 7px 13px; font-size: 13px; border-radius: 8px; }
-.btn-lg { padding: 14px 26px; font-size: 16px; border-radius: 12px; }
+.btn-sm { padding: 6px 12px; font-size: 12.5px; border-radius: 8px; }
+.btn-lg { padding: 12px 22px; font-size: 14px; border-radius: 10px; }
 
 /* ---------- Forms ---------- */
 .field { margin-bottom: 18px; }
@@ -321,30 +351,47 @@ textarea { resize: vertical; }
 
 /* ---------- Badges / tags / alerts ---------- */
 .tag {
-  display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 9px;
-  border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark);
+  display: inline-flex; align-items: center;
+  font-size: 12px; font-weight: 550; padding: 2px 8px;
+  border-radius: 8px; background: #e4e5e7; color: #202223;
+  line-height: 1.4; letter-spacing: 0;
 }
-.tag.green { background: var(--green-soft); color: var(--green); }
-.tag.amber { background: #fffbeb; color: #b45309; }
-.tag.gray { background: #f1f5f9; color: var(--muted); }
+.tag.green { background: var(--green-soft); color: #0c5132; }
+.tag.amber { background: var(--saffron-soft); color: #5e4200; }
+.tag.gray { background: #e4e5e7; color: #6d7175; }
 
 .alert {
-  padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-bottom: 16px;
-  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px;
+  display: flex; align-items: flex-start; gap: 10px;
+  border: 1px solid transparent; line-height: 1.45;
 }
-.alert.success { background: var(--green-soft); color: #065f46; border: 1px solid #a7f3d0; }
-.alert.error { background: var(--red-soft); color: #991b1b; border: 1px solid #fecaca; }
-.alert.info { background: var(--brand-soft); color: #3730a3; border: 1px solid #c7d2fe; }
+.alert.success { background: var(--green-soft); color: #0c5132; border-color: #98c9b6; }
+.alert.error { background: var(--red-soft); color: #8e1b0d; border-color: #e0b3b2; }
+.alert.info { background: var(--brand-soft); color: #1f5199; border-color: #b4d5f5; }
 
-.page-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 4px; }
-.page-sub { color: var(--muted); margin: 0 0 24px; }
+.page-title {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
+  color: var(--ink);
+  line-height: 1.3;
+}
+/* In embedded mode the native ui-title-bar already shows the page name —
+   hide the duplicate in-page H1 so the body starts with content. */
+body.is-embedded .page-title { display: none; }
+body.is-embedded .page-head .page-title { display: none; }
+.page-sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; line-height: 1.45; }
+body.is-embedded .page-sub { margin-top: 0; }
+body.is-embedded .page-head { margin-bottom: 16px; }
+body.is-embedded .page-head .page-sub { margin-bottom: 0; }
 
 /* ---------- Tracking status strip (dashboard) ---------- */
-.tracking-status { padding: 18px 22px; }
-.tracking-status.is-active { border-color: #a7f3d0; background: linear-gradient(180deg, #ecfdf5 0%, #fff 48%); }
-.tracking-status.is-warn { border-color: #fde68a; background: linear-gradient(180deg, #fffbeb 0%, #fff 48%); }
+.tracking-status { padding: 16px 18px; }
+.tracking-status.is-active { border-color: #98c9b6; background: #fff; box-shadow: inset 3px 0 0 var(--green); }
+.tracking-status.is-warn { border-color: #e1b878; background: #fff; box-shadow: inset 3px 0 0 var(--saffron); }
 .tracking-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-.tracking-title { font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.tracking-title { font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
 .tracking-checks { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 .tracking-checks .ok { color: var(--green); }
 .tracking-checks .bad { color: #b45309; }
@@ -371,8 +418,8 @@ textarea { resize: vertical; }
   padding: 12px 14px;
   box-sizing: border-box;
 }
-.tf-cell.has { border-color: #a7f3d0; background: #f0fdf4; }
-.tf-cell.empty { opacity: .85; background: #f8fafc; }
+.tf-cell.has { border-color: #98c9b6; background: var(--green-soft); }
+.tf-cell.empty { background: var(--bg); }
 .tf-label {
   display: block;
   color: var(--muted);
@@ -383,8 +430,8 @@ textarea { resize: vertical; }
 }
 .tf-count {
   display: block;
-  font-size: 22px;
-  font-weight: 800;
+  font-size: 20px;
+  font-weight: 650;
   letter-spacing: -0.02em;
   margin: 0;
   line-height: 1.2;
@@ -434,8 +481,8 @@ textarea { resize: vertical; }
 .pf-track {
   flex: 1 1 auto;
   min-width: 40px;
-  background: #eef2ff;
-  border: 1px solid #e0e7ff;
+  background: var(--bg);
+  border: 1px solid var(--line);
   border-radius: 999px;
   height: 12px;
   overflow: hidden;
@@ -444,7 +491,7 @@ textarea { resize: vertical; }
 .pf-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--brand), #8b5cf6);
+  background: var(--brand);
   border-radius: 999px;
   min-width: 4px;
 }
@@ -487,8 +534,8 @@ textarea { resize: vertical; }
 .del-track {
   flex: 1 1 auto;
   min-width: 40px;
-  background: #eef2ff;
-  border: 1px solid #e0e7ff;
+  background: var(--bg);
+  border: 1px solid var(--line);
   border-radius: 999px;
   height: 12px;
   overflow: hidden;

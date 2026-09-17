@@ -324,17 +324,23 @@ class ReachFeedAndPerformanceTest extends TestCase
             'shopify.api_key'  => 'test-api-key',
         ]);
 
-        $this->actingAsShop()
+        $html = $this->actingAsShop()
             ->get('/dashboard')
             ->assertOk()
             ->assertSee('Performance', false)
             ->assertSee('Product Feed', false)
             ->assertSee('<ui-nav-menu>', false)
+            ->assertSee('<ui-title-bar', false)
             ->assertSee('shopify-api-key', false)
             ->assertSee('rel="home"', false)
             ->assertSee('/performance', false)
             ->assertSee('/feed', false)
             ->assertSee('/settings', false)
-            ->assertSee('/billing', false);
+            ->assertSee('/billing', false)
+            ->getContent();
+
+        // Custom header chrome must not render when embedded.
+        $this->assertStringNotContainsString('class="app-header"', $html);
+        $this->assertStringNotContainsString('class="brand"', $html);
     }
 }
