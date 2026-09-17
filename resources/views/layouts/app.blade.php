@@ -16,7 +16,9 @@
             Reach
         </div>
         <nav class="app-nav">
-            <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Dashboard</a>
+            <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard*') ? 'active' : '' }}">Dashboard</a>
+            <a href="{{ route('performance') }}" class="{{ request()->routeIs('performance') ? 'active' : '' }}">Performance</a>
+            <a href="{{ route('feed') }}" class="{{ request()->routeIs('feed*') ? 'active' : '' }}">Product Feed</a>
             <a href="{{ route('settings') }}" class="{{ request()->routeIs('settings*') ? 'active' : '' }}">Settings</a>
             <a href="{{ route('billing') }}" class="{{ request()->routeIs('billing*') ? 'active' : '' }}">Billing</a>
         </nav>

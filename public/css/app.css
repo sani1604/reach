@@ -207,12 +207,83 @@ textarea { resize: vertical; }
 .alert { gap: 12px; }
 .alert form { margin: 0; }
 
+/* ---------- Page head / segments ---------- */
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.page-head-actions { display: flex; gap: 8px; align-items: center; }
+.seg { display: inline-flex; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg-item { padding: 7px 12px; font-size: 13px; font-weight: 700; color: var(--muted); text-decoration: none; }
+.seg-item:hover { background: var(--bg); color: var(--ink); }
+.seg-item.on { background: var(--brand-soft); color: var(--brand-dark); }
+
+/* ---------- Performance funnel ---------- */
+.perf-funnel { display: flex; flex-direction: column; gap: 10px; }
+.pf-row { display: grid; grid-template-columns: 120px 1fr 72px 56px; gap: 10px; align-items: center; }
+.pf-label { font-size: 13px; font-weight: 600; }
+.pf-track { background: var(--bg); border-radius: 999px; height: 10px; overflow: hidden; }
+.pf-fill { height: 100%; background: linear-gradient(90deg, var(--brand), #8b5cf6); border-radius: 999px; min-width: 4px; }
+.pf-count { font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+.pf-rate { color: var(--muted); font-size: 12px; text-align: right; }
+@media (max-width: 640px) {
+  .pf-row { grid-template-columns: 100px 1fr 56px; }
+  .pf-rate { display: none; }
+}
+
+.delivery-bars { display: flex; flex-direction: column; gap: 12px; }
+.del-row { display: grid; grid-template-columns: 70px 1fr 56px; gap: 10px; align-items: center; font-size: 13px; }
+.del-track { background: var(--bg); border-radius: 999px; height: 10px; overflow: hidden; }
+.del-fill { height: 100%; border-radius: 999px; min-width: 4px; }
+.del-fill.browser { background: var(--brand); }
+.del-fill.server { background: var(--green); }
+
+/* ---------- Product feed ---------- */
+.feed-hero { background: linear-gradient(180deg, #f8fafc 0%, #fff 55%); }
+.feed-hero .eyebrow {
+  display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--brand-dark); background: var(--brand-soft);
+  padding: 4px 10px; border-radius: 999px; margin-bottom: 12px;
+}
+.feed-hero-title { margin: 0 0 8px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.feed-hero-lede { color: var(--muted); max-width: 640px; margin: 0 0 18px; }
+.feed-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+.pipeline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pipe-chip {
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 14px; font-size: 13px; font-weight: 700; color: var(--ink);
+}
+.pipe-chip.on { background: var(--brand-soft); border-color: #c7d2fe; color: var(--brand-dark); }
+.pipe-arrow { color: var(--muted); font-weight: 700; }
+
+.feature-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px; }
+.feature-list li { display: flex; gap: 12px; align-items: flex-start; }
+.feature-list .fi {
+  width: 28px; height: 28px; border-radius: 8px; background: var(--brand-soft);
+  color: var(--brand-dark); display: flex; align-items: center; justify-content: center;
+  font-weight: 800; flex-shrink: 0; font-size: 13px;
+}
+.feature-list .fi.ok { background: var(--green-soft); color: var(--green); }
+.feature-list .fi.warn { background: #fffbeb; color: #b45309; }
+
+.feed-url-box {
+  display: flex; gap: 8px; align-items: center; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+}
+.feed-url-box code {
+  flex: 1; font-size: 12px; word-break: break-all; color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .muted { color: var(--muted); }
 .small { font-size: 12.5px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
 .nowrap { white-space: nowrap; }
+.hint { color: var(--muted); font-size: 12.5px; }
 .mt-0 { margin-top: 0; } .mb-0 { margin-bottom: 0; }
 .mt-16 { margin-top: 16px; } .mb-16 { margin-bottom: 16px; }
+
+/* page-head nests title + sub; keep sub margin tight under the flex row */
+.page-head .page-title { margin-bottom: 2px; }
+.page-head .page-sub { margin-bottom: 0; }
 
 /* ---------- Landing page ---------- */
 .landing { background: #fff; color: var(--ink); }

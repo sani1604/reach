@@ -21,6 +21,12 @@ class Shop extends Model
         'capi_url',              // optional CAPI endpoint override
         'web_pixel_id',          // Shopify WebPixel GID (Customer Events)
         'advertiser_api_key',    // optional OpenAI Ads Manager / Advertiser API key
+        'feed_token',
+        'feed_item_count',
+        'feed_issue_count',
+        'feed_synced_at',
+        'feed_status',
+        'feed_meta',
         'installed_at',
         'uninstalled_at',
         'monthly_event_count',
@@ -35,6 +41,8 @@ class Shop extends Model
             'token_expires_at'         => 'datetime',
             'refresh_token_expires_at' => 'datetime',
             'events_reset_at'          => 'datetime',
+            'feed_synced_at'           => 'datetime',
+            'feed_meta'                => 'array',
         ];
     }
 

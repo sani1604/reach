@@ -93,6 +93,27 @@
 
     <section>
         <div class="wrap">
+            <h2>Catalog + pixel, together</h2>
+            <p class="sec-lede">Product Feed gets your variants into OpenAI Ads. Reach Pixel measures what happens after the click.</p>
+            <div class="steps">
+                <div class="step">
+                    <h4>📦 Product Feed</h4>
+                    <p>Every Shopify variant mapped to the OpenAI Ads feed spec — TSV/CSV download or a private URL for Ads Manager.</p>
+                </div>
+                <div class="step">
+                    <h4>⚠️ Issues caught early</h4>
+                    <p>Missing images, prices and required fields surface before OpenAI rejects the row.</p>
+                </div>
+                <div class="step">
+                    <h4>📈 Performance</h4>
+                    <p>Revenue, funnel rates, match quality and ChatGPT campaign tags from real Shopify orders.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="wrap">
             <h2>Simple, affordable pricing</h2>
             <p class="sec-lede">Start free. Upgrade when you want revenue attribution and alerts.</p>
             <div class="pricing">
@@ -102,6 +123,7 @@
                     <div class="per">forever, up to 50,000 events / month</div>
                     <ul>
                         <li>OpenAI Ads pixel (1-click install)</li>
+                        <li>Product feed for OpenAI Ads</li>
                         <li>100% server-side event delivery</li>
                         <li>Live events dashboard &amp; funnel</li>
                         <li>5 events tracked, ad-blocker-proof</li>
@@ -115,7 +137,7 @@
                     <div class="per">7-day free trial · up to 1,000,000 events / month</div>
                     <ul>
                         <li>Everything in Free</li>
-                        <li>Revenue from OpenAI Ads</li>
+                        <li>Performance &amp; revenue dashboard</li>
                         <li>Top products sold via ChatGPT Ads</li>
                         <li>Attribution OpenAI can't show</li>
                         <li>Email alerts if your pixel breaks</li>
