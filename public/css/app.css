@@ -369,6 +369,114 @@ textarea { resize: vertical; }
 .alert.error { background: var(--red-soft); color: #8e1b0d; border-color: #e0b3b2; }
 .alert.info { background: var(--brand-soft); color: #1f5199; border-color: #b4d5f5; }
 
+/* ---------- Callout banners (Performance / status) ---------- */
+.callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.callout-info {
+  background: #eef5ff;
+  border-color: #b4d5f5;
+  color: #1a365d;
+}
+.callout-icon {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2b6cb0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  line-height: 1;
+}
+.callout-body {
+  flex: 1 1 auto;
+  min-width: 0; /* allow text wrap inside flex */
+}
+.callout-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a365d;
+  margin: 0 0 4px;
+  line-height: 1.35;
+}
+.callout-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #2c5282;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.callout-text a {
+  color: #1a365d;
+  font-weight: 650;
+  text-decoration: underline;
+}
+.callout-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.callout-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #b4d5f5;
+  font-size: 12px;
+  font-weight: 650;
+  color: #1a365d;
+  white-space: nowrap;
+}
+.callout-chip-muted {
+  color: #718096;
+  border-color: #cbd5e0;
+  background: #f7fafc;
+}
+.callout-action {
+  margin: 0;
+  font-size: 12.5px;
+  color: #2c5282;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.callout-action .mono,
+.callout-action code.mono {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fff;
+  border: 1px solid #c5daf5;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #1a365d;
+}
+/* Fix legacy .alert flex children not wrapping long mono text */
+.alert {
+  flex-wrap: wrap;
+}
+.alert > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+
 .page-title {
   font-size: 20px;
   font-weight: 650;

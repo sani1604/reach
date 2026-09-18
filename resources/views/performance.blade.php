@@ -21,20 +21,41 @@
 
 
     @if (!($s['has_ads_traffic'] ?? false) && (($s['store_page_views'] ?? 0) > 0 || ($s['store_purchases'] ?? 0) > 0))
-        <div class="alert info mb-16">
-            Pixel is tracking store traffic
-            ({{ number_format((int) ($s['store_page_views'] ?? 0)) }} page views
-            · {{ number_format((int) ($s['store_purchases'] ?? 0)) }} store orders in this window),
-            but <strong>none carry OpenAI Ads attribution</strong> yet.
-            Add <span class="mono">utm_source=chatgpt</span> (or ensure <span class="mono">oppref</span> lands from Ads)
-            on ChatGPT landing URLs so Performance can separate ads from organic.
+        <div class="callout callout-info mb-16" role="status">
+            <div class="callout-icon" aria-hidden="true">i</div>
+            <div class="callout-body">
+                <div class="callout-title">No OpenAI Ads attribution in this window</div>
+                <p class="callout-text">
+                    Your pixel is live on the storefront, but none of these events include
+                    an OpenAI click id or ChatGPT UTM — so Performance stays at zero until
+                    ads traffic lands.
+                </p>
+                <div class="callout-meta">
+                    <span class="callout-chip">{{ number_format((int) ($s['store_page_views'] ?? 0)) }} page views</span>
+                    <span class="callout-chip">{{ number_format((int) ($s['store_purchases'] ?? 0)) }} store orders</span>
+                    <span class="callout-chip callout-chip-muted">0 attributed</span>
+                </div>
+                <p class="callout-action">
+                    On ChatGPT Ads landing URLs add
+                    <code class="mono">utm_source=chatgpt</code>
+                    (and keep <code class="mono">oppref</code> from the ad click).
+                    Dashboard still shows full store funnel; this page is ads-only.
+                </p>
+            </div>
         </div>
     @endif
 
     @unless ($s['tracking_active'] ?? false)
-        <div class="alert info mb-16">
-            Tracking isn’t fully live yet — connect your Pixel ID + CAPI key and reconnect the Shopify pixel in
-            <a href="{{ route('settings') }}">Settings</a> so Performance fills with real data.
+        <div class="callout callout-info mb-16" role="status">
+            <div class="callout-icon" aria-hidden="true">i</div>
+            <div class="callout-body">
+                <div class="callout-title">Tracking isn’t fully live yet</div>
+                <p class="callout-text">
+                    Connect your Pixel ID + CAPI key and reconnect the Shopify pixel in
+                    <a href="{{ route('settings') }}">Settings</a>
+                    so Performance can fill with real attributed data.
+                </p>
+            </div>
         </div>
     @endunless
 
