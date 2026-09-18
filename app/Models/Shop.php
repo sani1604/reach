@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Shop extends Model
 {
     protected $fillable = [
+        'app_key',
         'shopify_domain',
         'access_token',
         'refresh_token',
@@ -217,4 +218,38 @@ class Shop extends Model
             fn ($scope) => ! in_array($scope, $granted, true)
         ));
     }
+
+    public function appKey(): string
+    {
+        return $this->app_key ?: (string) config('reach.app', 'reach');
+    }
+
+    public function scopeForApp($query, ?string $appKey = null)
+    {
+        $key = $appKey ?: \App\Services\ShopifyApp::key();
+
+        return $query->where('app_key', $key);
+    }
+
+    public static function findForApp(string $domain, ?string $appKey = null): ?self
+    {
+        $domain = \App\Services\ShopDomain::normalize($domain) ?? strtolower($domain);
+
+        return static::query()
+            ->forApp($appKey)
+            ->where('shopify_domain', $domain)
+            ->first();
+    }
+
+    public static function upsertForApp(string $domain, array $attributes, ?string $appKey = null): self
+    {
+        $key = $appKey ?: \App\Services\ShopifyApp::key();
+        $domain = \App\Services\ShopDomain::normalize($domain) ?? strtolower($domain);
+
+        return static::updateOrCreate(
+            ['app_key' => $key, 'shopify_domain' => $domain],
+            array_merge($attributes, ['app_key' => $key])
+        );
+    }
+
 }

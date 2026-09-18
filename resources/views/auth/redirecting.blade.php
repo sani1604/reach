@@ -10,7 +10,7 @@
     <div class="wrap">
         <div class="hero" style="padding-top: 96px; text-align:center;">
             <div class="brand" style="justify-content:center; margin-bottom:16px;">
-                <span class="logo">R</span> Reach
+                <span class="logo">{{ \App\Services\ShopifyApp::mark() }}</span> {{ \App\Services\ShopifyApp::name() }}
             </div>
             <p class="lede">Connecting to Shopify…</p>
             <p class="muted small">If nothing happens, <a href="{{ $url }}" @if($top) target="_top" @endif>continue here</a>.</p>

@@ -3,14 +3,20 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Reach — OpenAI Ads Pixel for Shopify India</title>
-    <meta name="description" content="Track ChatGPT Ads conversions, Shopify purchases and revenue with Reach — the OpenAI Ads Pixel and Conversions API built for Shopify merchants.">
+    @php
+    $brandName = \App\Services\ShopifyApp::name();
+    $brandFull = \App\Services\ShopifyApp::fullName();
+    $brandTag  = \App\Services\ShopifyApp::tagline();
+    $brandMark = \App\Services\ShopifyApp::mark();
+@endphp
+    <title>{{ $brandFull }} for Shopify</title>
+    <meta name="description" content="Track ChatGPT Ads conversions, Shopify purchases and revenue with {{ $brandName }} — the OpenAI Ads Pixel and Conversions API built for Shopify merchants.">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}?v={{ @filemtime(public_path('css/app.css')) ?: '4' }}">
 </head>
 <body class="landing">
     <div class="wrap">
         <nav class="nav">
-            <div class="brand"><span class="logo">R</span> Reach</div>
+            <div class="brand"><span class="logo">{{ $brandMark }}</span> {{ $brandName }}</div>
             <a class="btn btn-primary btn-sm" href="{{ route('auth.install') }}">Install Free</a>
         </nav>
     </div>
@@ -18,7 +24,7 @@
     <header class="hero wrap">
         <span class="eyebrow">🇮🇳 Built for Indian Shopify brands</span>
         <h1>From ChatGPT click to Shopify purchase — <span class="grad">track the complete journey.</span></h1>
-        <p class="lede">Reach installs the OpenAI Ads pixel and server-side Conversions API on your store in one click. See every PageView, Add to Cart, Checkout and Purchase — with accurate attribution, even when ad-blockers get in the way. No theme edits.</p>
+        <p class="lede">{{ $brandName }} installs the OpenAI Ads pixel and server-side Conversions API on your store in one click. See every PageView, Add to Cart, Checkout and Purchase — with accurate attribution, even when ad-blockers get in the way. No theme edits.</p>
         <div class="cta-row">
             <a class="btn btn-saffron btn-lg" href="{{ route('auth.install') }}">Install Free</a>
             <a class="btn btn-ghost btn-lg" href="#how">See How It Works</a>
@@ -39,7 +45,7 @@
             <div class="steps">
                 <div class="step">
                     <div class="num">1</div>
-                    <h4>Install Reach</h4>
+                    <h4>Install {{ $brandName }}</h4>
                     <p>One click installs the app on your Shopify store and auto-loads the OpenAI Ads pixel on every page.</p>
                 </div>
                 <div class="step">
@@ -73,7 +79,7 @@
     <section>
         <div class="wrap">
             <h2>Why server-side tracking matters</h2>
-            <p class="sec-lede">Browser pixels get blocked by ad-blockers and Safari. Reach forwards your Shopify orders server-side through the OpenAI Conversions API — with a shared event ID so nothing is double-counted.</p>
+            <p class="sec-lede">Browser pixels get blocked by ad-blockers and Safari. {{ $brandName }} forwards your Shopify orders server-side through the OpenAI Conversions API — with a shared event ID so nothing is double-counted.</p>
             <div class="steps">
                 <div class="step">
                     <h4>🔒 Survives ad-blockers</h4>
@@ -94,7 +100,7 @@
     <section>
         <div class="wrap">
             <h2>Catalog + pixel, together</h2>
-            <p class="sec-lede">Product Feed gets your variants into OpenAI Ads. Reach Pixel measures what happens after the click.</p>
+            <p class="sec-lede">Product Feed gets your variants into OpenAI Ads. {{ $brandName }} Pixel measures what happens after the click.</p>
             <div class="steps">
                 <div class="step">
                     <h4>📦 Product Feed</h4>
@@ -176,7 +182,7 @@
             <div class="faq">
                 <details>
                     <summary>Does OpenAI actually have ads?</summary>
-                    <p>Yes — OpenAI Ads lets brands reach users on ChatGPT. Reach plugs your Shopify store into that traffic so you can see what those clicks actually buy.</p>
+                    <p>Yes — OpenAI Ads lets brands reach users on ChatGPT. {{ $brandName }} plugs your Shopify store into that traffic so you can see what those clicks actually buy.</p>
                 </details>
                 <details>
                     <summary>Will this slow down my store?</summary>
@@ -184,7 +190,7 @@
                 </details>
                 <details>
                     <summary>Do I need to edit my theme code?</summary>
-                    <p>No. Reach uses Shopify's Customer Events system to install the pixel automatically. No Liquid, no theme changes.</p>
+                    <p>No. {{ $brandName }} uses Shopify's Customer Events system to install the pixel automatically. No Liquid, no theme changes.</p>
                 </details>
                 <details>
                     <summary>Is my store data safe?</summary>
@@ -199,7 +205,7 @@
     </section>
 
     <footer class="footer wrap">
-        <span>© {{ date('Y') }} Reach — The OpenAI Ads Pixel for Shopify India.</span>
+        <span>© {{ date('Y') }} {{ $brandFull }}.</span>
         <span>Made for Indian Shopify brands. Built for accurate attribution.</span>
     </footer>
 </body>

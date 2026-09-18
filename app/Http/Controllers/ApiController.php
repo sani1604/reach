@@ -26,7 +26,8 @@ class ApiController extends Controller
             return response()->json(['enabled' => false], 429);
         }
 
-        $shop = Shop::where('shopify_domain', $domain)->first();
+        $shop = Shop::findForApp($domain)
+            ?: Shop::where('shopify_domain', $domain)->whereNull('uninstalled_at')->whereNotNull('access_token')->first();
 
         if (! $shop || ! $shop->isInstalled() || ! $shop->pixelConfigured()) {
             // Uniform response — do not confirm whether the shop exists.
@@ -71,7 +72,8 @@ class ApiController extends Controller
             return response()->json(['ok' => false, 'error' => 'rate_limited'], 429);
         }
 
-        $shop = Shop::where('shopify_domain', $domain)->first();
+        $shop = Shop::findForApp($domain)
+            ?: Shop::where('shopify_domain', $domain)->whereNull('uninstalled_at')->whereNotNull('access_token')->first();
         if (! $shop || ! $shop->isInstalled()) {
             return response()->json(['ok' => false], 404);
         }
@@ -195,7 +197,7 @@ class ApiController extends Controller
     public function enrich(Request $request)
     {
         $domain = ShopDomain::normalize((string) $request->input('shop'));
-        $shop = $domain ? Shop::where('shopify_domain', $domain)->first() : null;
+        $shop = $domain ? (Shop::findForApp($domain) ?: Shop::where('shopify_domain', $domain)->whereNull('uninstalled_at')->first()) : null;
 
         if ($this->tooManyAttempts('enrich-ip:'.$request->ip(), 60)) {
             return response()->json(['ok' => false, 'error' => 'rate_limited'], 429);

@@ -7,21 +7,19 @@ class ShopifyWebhook
     /**
      * Verify a webhook request. Shopify signs the raw JSON body with HMAC-SHA256
      * and ships it in the X-Shopify-Hmac-Sha256 header.
+     *
+     * Multi-app: tries every configured Partner secret.
      */
     public static function verify(string $rawBody, ?string $hmacHeader): bool
     {
-        if (! $hmacHeader) {
-            return false;
-        }
-
-        $calculated = base64_encode(hash_hmac('sha256', $rawBody, (string) config('shopify.api_secret'), true));
-
-        return hash_equals($hmacHeader, $calculated);
+        return ShopifyApp::appKeyFromWebhookHmac($rawBody, $hmacHeader) !== null;
     }
 
     /**
      * Verify the OAuth callback query string (hmac + signature params removed,
      * sorted alphabetically, and hashed with HMAC-SHA256 hex digest per Shopify spec).
+     *
+     * Multi-app: tries each secret and binds the matching app key.
      */
     public static function verifyOAuthQueryString(string $rawQuery): bool
     {
@@ -33,9 +31,33 @@ class ShopifyWebhook
 
         unset($params['hmac'], $params['signature']);
         ksort($params);
+        $message = http_build_query($params);
 
-        $calculated = hash_hmac('sha256', http_build_query($params), (string) config('shopify.api_secret'));
+        $keys = array_values(array_unique(array_filter([
+            ShopifyApp::key(),
+            ...ShopifyApp::configuredKeys(),
+        ])));
 
-        return hash_equals($hmac, $calculated);
+        foreach ($keys as $appKey) {
+            $secret = ShopifyApp::apiSecret($appKey);
+            if (! $secret) {
+                continue;
+            }
+            $calculated = hash_hmac('sha256', $message, $secret);
+            if (hash_equals($hmac, $calculated)) {
+                ShopifyApp::setKey($appKey);
+
+                return true;
+            }
+        }
+
+        $fallback = (string) config('shopify.api_secret');
+        if ($fallback !== '') {
+            $calculated = hash_hmac('sha256', $message, $fallback);
+
+            return hash_equals($hmac, $calculated);
+        }
+
+        return false;
     }
 }

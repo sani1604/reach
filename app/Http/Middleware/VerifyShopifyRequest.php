@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Shop;
 use App\Services\SessionToken;
 use App\Services\ShopDomain;
+use App\Services\ShopifyApp;
 use App\Services\ShopifyRequest;
 use Closure;
 use Illuminate\Http\Request;
@@ -50,7 +51,11 @@ class VerifyShopifyRequest
             return $this->fail($request);
         }
 
-        session(['shop' => $shop->shopify_domain]);
+        session([
+            'shop'        => $shop->shopify_domain,
+            'shopify_app' => $shop->appKey(),
+        ]);
+        ShopifyApp::setKey($shop->appKey());
         $request->attributes->set('shop', $shop);
 
         return $next($request);
@@ -77,7 +82,7 @@ class VerifyShopifyRequest
             return null;
         }
 
-        $shop = Shop::where('shopify_domain', $domain)->first();
+        $shop = Shop::findForApp($domain);
 
         return ($shop && $shop->isInstalled()) ? $shop : null;
     }
@@ -97,6 +102,11 @@ class VerifyShopifyRequest
             return null;
         }
 
+        $sessionApp = $request->session()->get('shopify_app');
+        if (is_string($sessionApp) && ShopifyApp::isKnown($sessionApp)) {
+            ShopifyApp::setKey($sessionApp);
+        }
+
         // If the request also carries a shop query/body, it must match session.
         $hint = ShopDomain::normalize(
             $request->query('shop') ?: $request->input('shop')
@@ -105,7 +115,7 @@ class VerifyShopifyRequest
             return null;
         }
 
-        $shop = Shop::where('shopify_domain', $sessionDomain)->first();
+        $shop = Shop::findForApp($sessionDomain);
 
         return ($shop && $shop->isInstalled()) ? $shop : null;
     }

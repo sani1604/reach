@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(
             append: [
+                \App\Http\Middleware\ResolveShopifyApp::class,
                 \App\Http\Middleware\SecurityHeaders::class,
                 \App\Http\Middleware\SetEmbedFrameHeaders::class,
             ],
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(
             append: [
+                \App\Http\Middleware\ResolveShopifyApp::class,
                 \App\Http\Middleware\SecurityHeaders::class,
             ],
         );

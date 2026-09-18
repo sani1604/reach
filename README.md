@@ -2,7 +2,7 @@
 
 **From ChatGPT click to Shopify purchase — track the complete journey.**
 
-A multi-tenant **Shopify public app** built on **Laravel** that installs the OpenAI Ads
+A multi-tenant **Shopify app** built on **Laravel** (one codebase powers **Reach** private installs and the public **PixelAI** App Store listing — see `docs/MULTI-APP.md`) that installs the OpenAI Ads
 pixel in one click and forwards customer events server-side via the OpenAI Conversions
 API (Meta CAPI-style). Track **PageView → Product View → Add to Cart → Checkout → Purchase**
 with browser + server dual-fire and a shared `event_id` for deduplication.

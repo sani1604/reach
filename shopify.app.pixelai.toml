@@ -1,0 +1,59 @@
+# PixelAI: ChatGPT & OpenAI Ads (PUBLIC App Store)
+#
+# Same Laravel codebase as Reach — different Partner app credentials.
+# Deploy with:
+#   shopify app config use shopify.app.pixelai.toml
+#   shopify app deploy
+#
+# Runtime env for this host (or the same host with SHOPIFY_APP=pixelai):
+#   SHOPIFY_APP=pixelai
+#   SHOPIFY_API_KEY=<PixelAI client id>
+#   SHOPIFY_API_SECRET=<PixelAI client secret>
+#   SHOPIFY_APP_HANDLE=<PixelAI handle from Partner Dashboard>
+#   APP_NAME=PixelAI
+#
+# IMPORTANT: replace client_id, application_url, and redirect_urls with the
+# values from Partner Dashboard → PixelAI app → Client credentials / URLs.
+# Leave client_id empty until you run `shopify app config link`.
+
+client_id = "REPLACE_WITH_PIXELAI_CLIENT_ID"
+name = "PixelAI: ChatGPT & OpenAI Ads"
+
+# Point this at the same Laravel host OR a dedicated public hostname.
+application_url = "https://reach.whatify.in/"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+include_config_on_deploy = true
+
+[access_scopes]
+scopes = "read_orders,read_products,write_pixels,read_customer_events"
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://reach.whatify.in/auth/callback",
+  "https://reach.whatify.in/auth/install"
+]
+
+[webhooks]
+api_version = "2026-07"
+
+[[webhooks.subscriptions]]
+topics = [
+  "app/uninstalled",
+  "orders/create",
+  "orders/paid",
+  "orders/cancelled",
+  "orders/updated",
+  "checkouts/create",
+  "refunds/create",
+  "app_subscriptions/update"
+]
+uri = "/webhooks"
+
+# Mandatory for public App Store apps.
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "/webhooks"

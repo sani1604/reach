@@ -42,7 +42,7 @@
 
     {{-- Hero / install-style card matching competitor Product Feed screen --}}
     <div class="card mb-16 feed-hero">
-        <div class="eyebrow">Built into Reach</div>
+        <div class="eyebrow">Built into {{ \App\Services\ShopifyApp::name() }}</div>
         <h2 class="feed-hero-title">Keep your catalog ready for OpenAI Ads</h2>
         <p class="feed-hero-lede">
             Build a correctly formatted feed from every Shopify variant, catch issues before delivery,
@@ -78,7 +78,7 @@
     </div>
 
     <div class="card mb-16">
-        <h3>Built to work with Reach Pixel</h3>
+        <h3>Built to work with {{ \App\Services\ShopifyApp::name() }} Pixel</h3>
         <div class="pipeline">
             <span class="pipe-chip">Shopify catalog</span>
             <span class="pipe-arrow">→</span>
@@ -89,7 +89,7 @@
             <span class="pipe-chip">Pixel &amp; Analytics</span>
         </div>
         <p class="sub" style="margin-top:12px;">
-            Product Feed gets your products into OpenAI Ads. Reach Pixel measures what happens after the click.
+            Product Feed gets your products into OpenAI Ads. {{ \App\Services\ShopifyApp::name() }} Pixel measures what happens after the click.
         </p>
     </div>
 

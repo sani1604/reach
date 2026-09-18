@@ -3,17 +3,17 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Install Reach</title>
+    <title>Install {{ \App\Services\ShopifyApp::name() }}</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
 </head>
 <body class="landing">
     <div class="wrap">
         <nav class="nav">
-            <div class="brand"><span class="logo">R</span> Reach</div>
+            <div class="brand"><span class="logo">{{ \App\Services\ShopifyApp::mark() }}</span> {{ \App\Services\ShopifyApp::name() }}</div>
         </nav>
         <div class="hero" style="padding-top: 64px;">
             <span class="eyebrow">🇮🇳 OpenAI Ads Pixel for Shopify India</span>
-            <h1 style="font-size: 34px;">Install Reach on your store</h1>
+            <h1 style="font-size: 34px;">Install {{ \App\Services\ShopifyApp::name() }} on your store</h1>
             <p class="lede">Enter your Shopify store URL to begin the one-click install.</p>
             <form method="GET" action="{{ route('auth.install') }}" target="_top" style="max-width: 420px; margin: 0 auto;">
                 <div class="field" style="text-align: left;">

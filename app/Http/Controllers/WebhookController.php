@@ -22,7 +22,10 @@ class WebhookController extends Controller
         );
         $webhookId = $request->header('X-Shopify-Webhook-Id');
 
-        $shop = Shop::where('shopify_domain', $domain)->first();
+        $appKey = $request->attributes->get('shopify_app_key')
+            ?: \App\Services\ShopifyApp::key();
+        $shop = Shop::findForApp($domain, is_string($appKey) ? $appKey : null)
+            ?: Shop::where('shopify_domain', $domain)->first(); // legacy rows
         if (! $shop) {
             return response()->json(['ok' => true], 200);
         }

@@ -3,7 +3,12 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title', 'Reach') — OpenAI Ads Pixel for Shopify</title>
+    @php
+        $__brandName = \App\Services\ShopifyApp::name();
+        $__brandTag  = \App\Services\ShopifyApp::tagline();
+        $__brandMark = \App\Services\ShopifyApp::mark();
+    @endphp
+    <title>@yield('title', $__brandName) — {{ $__brandTag }}</title>
     @if (config('shopify.embedded') && config('shopify.api_key'))
         <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
     @endif
@@ -15,7 +20,7 @@
 </head>
 <body class="{{ config('shopify.embedded') ? 'is-embedded' : 'is-standalone' }}">
     @php
-        $pageTitle = trim($__env->yieldContent('title') ?: 'Reach');
+        $pageTitle = trim($__env->yieldContent('title') ?: ($__brandName ?? \App\Services\ShopifyApp::name()));
         $planLabel = ucfirst($shop->plan ?? 'Free').' plan';
         $planTone = ($shop->plan ?? 'free') === 'free' ? 'info' : 'success';
     @endphp
@@ -43,7 +48,7 @@
     @else
         {{-- Standalone / local demo only — not shown inside Shopify admin --}}
         <header class="app-header">
-            <div class="brand"><span class="logo">R</span> Reach</div>
+            <div class="brand"><span class="logo">{{ $__brandMark ?? \App\Services\ShopifyApp::mark() }}</span> {{ $__brandName ?? \App\Services\ShopifyApp::name() }}</div>
             <nav class="app-nav" aria-label="App">
                 <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard*') ? 'active' : '' }}">Dashboard</a>
                 <a href="{{ route('performance') }}" class="{{ request()->routeIs('performance') ? 'active' : '' }}">Performance</a>
