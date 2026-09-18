@@ -160,6 +160,18 @@
                 e.preventDefault();
                 withToken(action.pathname + action.search).then(function (href) {
                     form.setAttribute('action', href);
+                    // Ensure JWT is in the POST body too (CSRF fallback when
+                    // third-party cookies block the XSRF cookie).
+                    return token().then(function (t) {
+                        var existing = form.querySelector('input[name="id_token"]');
+                        if (!existing) {
+                            existing = document.createElement('input');
+                            existing.type = 'hidden';
+                            existing.name = 'id_token';
+                            form.appendChild(existing);
+                        }
+                        existing.value = t;
+                    }).catch(function () { /* cookie CSRF may still work */ });
                 }).finally(function () {
                     HTMLFormElement.prototype.submit.call(form);
                 });

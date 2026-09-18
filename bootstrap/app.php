@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -15,27 +16,35 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
 
-        $middleware->web(append: [
-            \App\Http\Middleware\SetEmbedFrameHeaders::class,
-        ]);
+        $middleware->web(
+            append: [
+                \App\Http\Middleware\SecurityHeaders::class,
+                \App\Http\Middleware\SetEmbedFrameHeaders::class,
+            ],
+            replace: [
+                ValidateCsrfToken::class => \App\Http\Middleware\VerifyCsrfToken::class,
+            ],
+        );
+
+        $middleware->api(
+            append: [
+                \App\Http\Middleware\SecurityHeaders::class,
+            ],
+        );
 
         $middleware->alias([
             'shopify.webhook' => \App\Http\Middleware\VerifyShopifyWebhook::class,
             'shopify.request' => \App\Http\Middleware\VerifyShopifyRequest::class,
         ]);
 
+        // Absolute CSRF exceptions only — HMAC webhooks + public pixel API.
+        // Embedded admin POSTs must send @csrf OR a valid session JWT
+        // (see App\Http\Middleware\VerifyCsrfToken).
         $middleware->validateCsrfTokens(except: [
             'webhooks',
             'webhooks/*',
-            // App Bridge session-token authenticated endpoints — the JWT in
-            // the Authorization header replaces the CSRF cookie check.
             'auth/token-exchange',
-            // Embedded form posts authenticate via session token.
-            'settings',
-            'settings/*',
-            'settings/reconnect-pixel',
-            'billing',
-            'billing/*',
+            'api/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

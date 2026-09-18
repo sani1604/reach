@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Shop;
 use App\Services\SessionToken;
+use App\Services\ShopDomain;
 use App\Services\ShopifyRequest;
 use Closure;
 use Illuminate\Http\Request;
@@ -19,22 +20,33 @@ use Symfony\Component\HttpFoundation\Response;
  *  3. `id_token` query param (link navigations) or form field (POSTs)
  *  4. Cookie-session fallback (works when third-party cookies are allowed
  *     and for the local demo)
- *  5. `?shop=` param / `X-Shopify-Shop-Domain` header for already-trusted
- *     contexts
+ *
+ * Spoofable client headers (`X-Shopify-Shop-Domain`, `Referer`) are NEVER
+ * enough on their own to authorize a request — that was a VAPT finding.
  *
  * On failure we never send the merchant to the OAuth screen from inside the
- * iframe (Shopify blocks OAuth in iframes — that caused the "installation
- * page" redirect loop). Instead the embedded boot page re-establishes a
- * session token and returns the merchant to where they were.
+ * iframe (Shopify blocks OAuth in iframes). Instead the embedded boot page
+ * re-establishes a session token and returns the merchant to where they were.
  */
 class VerifyShopifyRequest
 {
     public function handle(Request $request, Closure $next): Response
     {
         $shop = $this->resolveFromSessionToken($request)
-            ?? $this->resolveFromSession($request);
+            ?? $this->resolveFromTrustedSession($request);
 
         if (! $shop) {
+            return $this->fail($request);
+        }
+
+        // Optional: if the client also sent a shop hint, it must match the
+        // authenticated domain (prevents confused-deputy token reuse).
+        $hint = ShopDomain::normalize(
+            $request->query('shop')
+                ?: $request->input('shop')
+                ?: $request->header('X-Shopify-Shop-Domain')
+        );
+        if ($hint && $hint !== $shop->shopify_domain) {
             return $this->fail($request);
         }
 
@@ -60,6 +72,7 @@ class VerifyShopifyRequest
         }
 
         $domain = app(SessionToken::class)->shopDomain($claims);
+        $domain = ShopDomain::normalize($domain);
         if (! $domain) {
             return null;
         }
@@ -69,32 +82,30 @@ class VerifyShopifyRequest
         return ($shop && $shop->isInstalled()) ? $shop : null;
     }
 
-    protected function resolveFromSession(Request $request): ?Shop
+    /**
+     * Cookie/session auth only — never trust bare ?shop= or spoofable headers.
+     */
+    protected function resolveFromTrustedSession(Request $request): ?Shop
     {
-        $domain = ShopifyRequest::shopDomain($request);
-        if (! $domain) {
+        $sessionDomain = ShopDomain::normalize(
+            is_string($request->session()->get('shop'))
+                ? $request->session()->get('shop')
+                : null
+        );
+
+        if (! $sessionDomain) {
             return null;
         }
 
-        // A bare ?shop= query param is only trusted when the session already
-        // belongs to that store, when Shopify itself vouches for the domain
-        // (X-Shopify-Shop-Domain), or on the app's first load inside the
-        // admin iframe (referrer is the admin origin). This keeps other
-        // stores' dashboards from being rendered to arbitrary visitors.
-        if ($request->session()->get('shop') !== $domain && ! $request->header('X-Shopify-Shop-Domain')) {
-            $adminHost = parse_url((string) $request->headers->get('referer', ''), PHP_URL_HOST);
-
-            $fromShopify = $adminHost && preg_match(
-                '/(^|\.)(admin\.shopify\.com|myshopify\.com)$/i',
-                (string) $adminHost
-            );
-
-            if (! $fromShopify) {
-                return null;
-            }
+        // If the request also carries a shop query/body, it must match session.
+        $hint = ShopDomain::normalize(
+            $request->query('shop') ?: $request->input('shop')
+        );
+        if ($hint && $hint !== $sessionDomain) {
+            return null;
         }
 
-        $shop = Shop::where('shopify_domain', $domain)->first();
+        $shop = Shop::where('shopify_domain', $sessionDomain)->first();
 
         return ($shop && $shop->isInstalled()) ? $shop : null;
     }
@@ -105,16 +116,12 @@ class VerifyShopifyRequest
             abort(401, 'Unauthenticated.');
         }
 
-        $domain = ShopifyRequest::shopDomain($request);
+        $domain = ShopDomain::normalize(ShopifyRequest::shopDomain($request));
 
         if ($domain) {
-            // Store is (was) installed: re-enter through the embedded boot
-            // page instead of bouncing the merchant to an install screen.
-            // The boot page re-establishes a session token and returns the
-            // merchant to the exact page they were on.
             return redirect()->route('auth.boot', [
                 'shop' => $domain,
-                'to'   => '/'.ltrim($request->path(), '/'),
+                'to'   => ShopDomain::safeAppPath('/'.ltrim($request->path(), '/')),
             ]);
         }
 

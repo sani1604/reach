@@ -46,6 +46,21 @@ class Shop extends Model
         ];
     }
 
+    /**
+     * Hide secrets from array / JSON serialization (logs, debug dumps, SSE).
+     * At-rest DB encryption is left to the host (disk encryption / KMS) so we
+     * don't break existing plaintext rows without a dual-read migration.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'access_token',
+        'refresh_token',
+        'capi_token',
+        'advertiser_api_key',
+        'feed_token',
+    ];
+
     public function events(): HasMany
     {
         return $this->hasMany(Event::class);

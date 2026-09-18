@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\PostInstallSetup;
 use App\Models\Shop;
 use App\Services\SessionToken;
+use App\Services\ShopDomain;
 use App\Services\ShopifyClient;
 use App\Services\ShopifyRequest;
 use App\Services\ShopifyWebhook;
@@ -34,7 +35,8 @@ class ShopifyAuthController extends Controller
         return view('auth.embedded', [
             'shop'     => $domain,
             'host'     => (string) $request->query('host', ''),
-            'target'   => (string) $request->query('to', '/dashboard'),
+            // Open-redirect guard: only in-app relative paths.
+            'target'   => ShopDomain::safeAppPath($request->query('to'), '/dashboard'),
         ]);
     }
 
@@ -198,12 +200,14 @@ class ShopifyAuthController extends Controller
         // Return the merchant to the app inside the Shopify admin. The admin
         // app URL has no sub-path — /apps/{handle}/{anything} renders the
         // admin's "this page doesn't exist" screen.
-        $host = (string) $request->query('host', '');
+        //
+        // `host` is attacker-controllable base64 — only allow Shopify admin hosts.
         $handle = config('shopify.app_handle');
+        $safeHost = ShopDomain::safeAdminHostParam((string) $request->query('host', ''));
 
-        $adminUrl = $host
-            ? 'https://'.base64_decode($host)."/apps/{$handle}"
-            : "https://{$domain}/admin/apps/{$handle}";
+        $adminUrl = $safeHost
+            ? 'https://'.$safeHost.'/apps/'.$handle
+            : 'https://'.$domain.'/admin/apps/'.$handle;
 
         return view('auth.redirecting', ['url' => $adminUrl, 'top' => true]);
     }
@@ -235,18 +239,6 @@ class ShopifyAuthController extends Controller
 
     protected function normalizeDomain(?string $domain): ?string
     {
-        if (! $domain) {
-            return null;
-        }
-
-        $domain = strtolower(trim($domain));
-        $domain = preg_replace('#^https?://#', '', $domain);
-        $domain = rtrim($domain, '/');
-
-        if (! str_contains($domain, '.') && ! str_contains($domain, ':')) {
-            $domain .= '.myshopify.com';
-        }
-
-        return $domain;
+        return ShopDomain::normalize($domain);
     }
 }

@@ -461,11 +461,11 @@ class WebhookController extends Controller
                 ->get(['id', 'vid', 'fbc', 'fbp', 'email', 'phone', 'order_id']);
         }
 
+        // Never log PII (email/phone/click ids) — count only for audit.
         logger()->info('GDPR customers/data_request', [
-            'shop'      => $shop->shopify_domain,
-            'customer'  => $customer['id'] ?? null,
-            'records'   => $visitors->count(),
-            'export'    => $visitors->toArray(),
+            'shop'     => $shop->shopify_domain,
+            'customer' => $customer['id'] ?? null,
+            'records'  => $visitors->count(),
         ]);
     }
 

@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Jobs\SyncProductFeed;
 use App\Models\Shop;
 use App\Services\ProductFeedBuilder;
+use App\Services\ShopDomain;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -100,10 +102,27 @@ class ProductFeedController extends Controller
      */
     public function download(Request $request, string $shop, string $token, ProductFeedBuilder $builder)
     {
-        $domain = strtolower($shop);
-        $row = Shop::where('shopify_domain', $domain)->where('feed_token', $token)->first();
+        $domain = ShopDomain::normalize($shop);
+        if (! $domain || ! is_string($token) || strlen($token) < 20 || strlen($token) > 128) {
+            abort(404);
+        }
 
-        if (! $row || ! $row->isInstalled()) {
+        // Rate-limit public feed pulls (token is a capability URL).
+        $rlKey = 'feed-dl:'.$request->ip().':'.$domain;
+        if (RateLimiter::tooManyAttempts($rlKey, 30)) {
+            abort(429, 'Too many feed requests');
+        }
+        RateLimiter::hit($rlKey, 60);
+
+        $row = Shop::where('shopify_domain', $domain)->first();
+
+        // Constant-time token compare to reduce timing leaks on the secret.
+        if (
+            ! $row
+            || ! $row->isInstalled()
+            || ! is_string($row->feed_token)
+            || ! hash_equals($row->feed_token, $token)
+        ) {
             abort(404);
         }
 

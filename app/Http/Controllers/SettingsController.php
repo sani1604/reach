@@ -257,11 +257,74 @@ class SettingsController extends Controller
 
     protected function validated(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'pixel_id'           => ['nullable', 'string', 'max:255'],
-            'capi_url'           => ['nullable', 'url', 'max:500'],
+            'capi_url'           => ['nullable', 'string', 'max:500'],
             'capi_token'         => ['nullable', 'string', 'max:5000'],
             'advertiser_api_key' => ['nullable', 'string', 'max:5000'],
         ]);
+
+        // SSRF: only allow blank (use default) or HTTPS OpenAI Ads hosts.
+        if (! empty($data['capi_url'])) {
+            $data['capi_url'] = $this->sanitizeCapiUrl((string) $data['capi_url']);
+        }
+
+        // Strip control characters from secrets / ids.
+        foreach (['pixel_id', 'capi_token', 'advertiser_api_key'] as $key) {
+            if (! empty($data[$key]) && is_string($data[$key])) {
+                $data[$key] = trim(preg_replace('/[\x00-\x1f\x7f]/', '', $data[$key]) ?? $data[$key]);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Reject non-HTTPS and non-OpenAI CAPI endpoints (SSRF protection).
+     */
+    protected function sanitizeCapiUrl(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts)) {
+            return null;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower((string) ($parts['host'] ?? ''));
+
+        if ($scheme !== 'https' || $host === '') {
+            // Invalid override — fall back to app default (null = use config).
+            return null;
+        }
+
+        if (
+            $host === 'localhost'
+            || str_ends_with($host, '.local')
+            || str_ends_with($host, '.internal')
+            || filter_var($host, FILTER_VALIDATE_IP)
+        ) {
+            return null;
+        }
+
+        $allowed = ['bzr.openai.com', 'api.ads.openai.com', 'api.openai.com'];
+        $defaultHost = parse_url((string) config('ads.capi_url'), PHP_URL_HOST);
+        if (is_string($defaultHost) && $defaultHost !== '') {
+            $allowed[] = strtolower($defaultHost);
+        }
+
+        $ok = false;
+        foreach ($allowed as $h) {
+            if ($host === $h || str_ends_with($host, '.'.$h)) {
+                $ok = true;
+                break;
+            }
+        }
+
+        return $ok ? $url : null;
     }
 }

@@ -7,24 +7,28 @@ use Illuminate\Http\Request;
 class ShopifyRequest
 {
     /**
-     * Resolve the requesting shop's *.myshopify.com domain from the embedded
-     * app header, the ?shop= query param, or the session — in that order.
+     * Resolve a candidate shop domain from the request.
+     *
+     * Order: session (trusted) → query/body shop → X-Shopify-Shop-Domain header.
+     * Callers that authorize access MUST still verify a session token or a
+     * matching session cookie — headers alone are spoofable.
      */
     public static function shopDomain(Request $request): ?string
     {
-        $domain = $request->header('X-Shopify-Shop-Domain')
-            ?: $request->query('shop')
-            ?: session('shop');
+        $candidates = [
+            session('shop'),
+            $request->query('shop'),
+            $request->input('shop'),
+            $request->header('X-Shopify-Shop-Domain'),
+        ];
 
-        if (! $domain) {
-            return null;
+        foreach ($candidates as $candidate) {
+            $domain = ShopDomain::normalize(is_string($candidate) ? $candidate : null);
+            if ($domain) {
+                return $domain;
+            }
         }
 
-        // Shopify sends a bare handle (e.g. "mystore") in the embedded header.
-        if (! str_contains($domain, '.') && ! str_contains($domain, ':')) {
-            $domain .= '.myshopify.com';
-        }
-
-        return strtolower($domain);
+        return null;
     }
 }

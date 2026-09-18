@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Shop;
 use App\Services\EventForwarder;
+use App\Services\ShopDomain;
 use App\Services\VisitorBridge;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 class ApiController extends Controller
@@ -15,15 +17,20 @@ class ApiController extends Controller
      */
     public function pixelConfig(Request $request)
     {
-        $domain = strtolower((string) $request->query('shop'));
+        $domain = ShopDomain::normalize((string) $request->query('shop'));
         if (! $domain) {
             return response()->json(['enabled' => false]);
+        }
+
+        if ($this->tooManyAttempts('pixel-config:'.$request->ip(), 120)) {
+            return response()->json(['enabled' => false], 429);
         }
 
         $shop = Shop::where('shopify_domain', $domain)->first();
 
         if (! $shop || ! $shop->isInstalled() || ! $shop->pixelConfigured()) {
-            return response()->json(['enabled' => false, 'shop' => $domain]);
+            // Uniform response — do not confirm whether the shop exists.
+            return response()->json(['enabled' => false]);
         }
 
         return response()->json([
@@ -49,7 +56,7 @@ class ApiController extends Controller
      */
     public function track(Request $request)
     {
-        $domain = strtolower((string) $request->input('shop'));
+        $domain = ShopDomain::normalize((string) $request->input('shop'));
         $eventName = $request->input('event') ?: $request->input('event_name');
         $data = $request->input('data', []);
 
@@ -57,12 +64,33 @@ class ApiController extends Controller
             return response()->json(['ok' => false, 'error' => 'shop and event are required'], 400);
         }
 
+        // Per-IP + per-shop rate limit (public, CORS-open endpoint).
+        $ipKey = 'track-ip:'.$request->ip();
+        $shopKey = 'track-shop:'.$domain;
+        if ($this->tooManyAttempts($ipKey, 300) || $this->tooManyAttempts($shopKey, 600)) {
+            return response()->json(['ok' => false, 'error' => 'rate_limited'], 429);
+        }
+
         $shop = Shop::where('shopify_domain', $domain)->first();
         if (! $shop || ! $shop->isInstalled()) {
             return response()->json(['ok' => false], 404);
         }
 
+        // Bound payload size to limit abuse / storage DoS.
+        if (is_array($data) && count($data, COUNT_RECURSIVE) > 200) {
+            return response()->json(['ok' => false, 'error' => 'payload_too_large'], 413);
+        }
+
         $standard = $this->standardName((string) $eventName);
+
+        // Only accept known event taxonomy — drop arbitrary free-form names.
+        $allowed = [
+            'PageView', 'ViewContent', 'AddToCart', 'InitiateCheckout',
+            'AddPaymentInfo', 'Purchase',
+        ];
+        if (! in_array($standard, $allowed, true)) {
+            return response()->json(['ok' => false, 'error' => 'unknown_event'], 422);
+        }
 
         // Purchase is server-authoritative (order webhooks); skip browser
         // duplicates so revenue is never double-counted on the dashboard.
@@ -166,18 +194,27 @@ class ApiController extends Controller
      */
     public function enrich(Request $request)
     {
-        $domain = strtolower((string) $request->input('shop'));
+        $domain = ShopDomain::normalize((string) $request->input('shop'));
         $shop = $domain ? Shop::where('shopify_domain', $domain)->first() : null;
+
+        if ($this->tooManyAttempts('enrich-ip:'.$request->ip(), 60)) {
+            return response()->json(['ok' => false, 'error' => 'rate_limited'], 429);
+        }
 
         // The checkout UI extension doesn't know the shop domain (checkout
         // sandbox). Resolve the store from a previously recorded Purchase
-        // event for this order instead.
+        // event for this order instead — require a recent Purchase so this
+        // cannot be used as a cross-shop oracle on arbitrary order ids.
         if (! $shop) {
             $orderId = preg_replace('/\D/', '', (string) $request->input('data.order_id'));
 
-            $shop = $orderId
-                ? Shop::whereHas('events', fn ($q) => $q->where('order_id', $orderId))->first()
-                : null;
+            if ($orderId !== '' && strlen($orderId) <= 20) {
+                $shop = Shop::whereHas('events', function ($q) use ($orderId) {
+                    $q->where('order_id', $orderId)
+                        ->where('event_name', 'Purchase')
+                        ->where('occurred_at', '>=', now()->subDays(14));
+                })->first();
+            }
         }
 
         if (! $shop || ! $shop->isInstalled()) {
@@ -252,5 +289,20 @@ class ApiController extends Controller
         ];
 
         return $map[$name] ?? ($map[strtolower($name)] ?? $name);
+    }
+
+    /**
+     * Simple atomic rate limit using the cache store.
+     * Hits the limiter and returns true when the key is over budget.
+     */
+    protected function tooManyAttempts(string $key, int $maxPerMinute): bool
+    {
+        if (RateLimiter::tooManyAttempts($key, $maxPerMinute)) {
+            return true;
+        }
+
+        RateLimiter::hit($key, 60);
+
+        return false;
     }
 }

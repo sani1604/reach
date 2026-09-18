@@ -109,16 +109,30 @@ class OpenAiCapiClient
 
     /**
      * Ensure the Pixel ID is attached as the `pid` query parameter.
+     *
+     * SSRF guard: only HTTPS to OpenAI Ads hosts (or the app-configured default).
+     * Merchant-supplied capi_url overrides must never hit internal/private IPs.
      */
     protected function buildUrl(string $baseUrl, string $pixelId): string
     {
         $parts = parse_url($baseUrl) ?: [];
-        $scheme = $parts['scheme'] ?? 'https';
-        $host = $parts['host'] ?? 'bzr.openai.com';
-        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
+        $host = strtolower((string) ($parts['host'] ?? 'bzr.openai.com'));
         $path = $parts['path'] ?? '/v1/events';
         if ($path === '' || $path === '/') {
             $path = '/v1/events';
+        }
+
+        if ($scheme !== 'https' || ! $this->isAllowedCapiHost($host)) {
+            // Fall back to the trusted default endpoint.
+            $default = (string) config('ads.capi_url', 'https://bzr.openai.com/v1/events');
+            $parts = parse_url($default) ?: [];
+            $scheme = 'https';
+            $host = strtolower((string) ($parts['host'] ?? 'bzr.openai.com'));
+            $path = $parts['path'] ?? '/v1/events';
+            if ($path === '' || $path === '/') {
+                $path = '/v1/events';
+            }
         }
 
         $query = [];
@@ -127,7 +141,53 @@ class OpenAiCapiClient
         }
         $query['pid'] = $pixelId;
 
-        return $scheme.'://'.$host.$port.$path.'?'.http_build_query($query);
+        // Never forward merchant-controlled ports (SSRF to internal services).
+        return $scheme.'://'.$host.$path.'?'.http_build_query($query);
+    }
+
+    /**
+     * Allow-list OpenAI Ads CAPI hosts (+ local mock for development).
+     */
+    protected function isAllowedCapiHost(string $host): bool
+    {
+        if ($host === '') {
+            return false;
+        }
+
+        // Block obvious internal / private targets even if misconfigured.
+        if (
+            $host === 'localhost'
+            || str_ends_with($host, '.local')
+            || str_ends_with($host, '.internal')
+            || filter_var($host, FILTER_VALIDATE_IP)
+        ) {
+            // Allow loopback only in local/testing for the mock CAPI.
+            if (app()->environment('local', 'testing')
+                && in_array($host, ['127.0.0.1', '::1', 'localhost'], true)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        $allowed = [
+            'bzr.openai.com',
+            'api.ads.openai.com',
+            'api.openai.com',
+        ];
+
+        $defaultHost = parse_url((string) config('ads.capi_url'), PHP_URL_HOST);
+        if (is_string($defaultHost) && $defaultHost !== '') {
+            $allowed[] = strtolower($defaultHost);
+        }
+
+        foreach ($allowed as $ok) {
+            if ($host === $ok || str_ends_with($host, '.'.$ok)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
