@@ -7,11 +7,20 @@ use Illuminate\Http\Request;
 
 /**
  * Performance — ChatGPT Ads attribution view (revenue, funnel, match signals).
- * Complements the main Dashboard with ROAS-style metrics merchants expect
- * from the competitor Reach app.
+ *
+ * Every metric on this page is OpenAI / ChatGPT–attributed only (oppref or
+ * chatgpt/openai UTM). Store-wide pixel traffic lives on the Dashboard funnel.
  */
 class PerformanceController extends Controller
 {
+    private const FUNNEL_STEPS = [
+        'PageView'         => 'page_views',
+        'ViewContent'      => 'view_content',
+        'AddToCart'        => 'add_to_cart',
+        'InitiateCheckout' => 'checkouts',
+        'Purchase'         => 'purchases',
+    ];
+
     public function index(Request $request)
     {
         $shop = $request->attributes->get('shop');
@@ -20,13 +29,16 @@ class PerformanceController extends Controller
 
         $base = $shop->events()->where('occurred_at', '>=', $since);
 
-        // All purchase/refund rows (needed for attribution filter + EMQ).
-        $purchaseRows = (clone $base)->where('event_name', 'Purchase')
-            ->get(['id', 'order_id', 'order_name', 'value', 'payload', 'occurred_at', 'source', 'event_name', 'dedup_key']);
-        $refundRows = (clone $base)->where('event_name', 'PurchaseCancelled')
-            ->get(['id', 'order_id', 'value', 'payload', 'dedup_key', 'occurred_at']);
+        // Load window events once — attribution is payload-based (JSON).
+        $windowEvents = (clone $base)->get([
+            'id', 'event_name', 'order_id', 'order_name', 'value', 'payload',
+            'occurred_at', 'source', 'dedup_key',
+        ]);
 
-        // Revenue / orders: OpenAI Ads–attributed only (oppref / ChatGPT UTM).
+        $attributed = OpenAiAttribution::filterAttributed($windowEvents);
+
+        $purchaseRows = $windowEvents->where('event_name', 'Purchase')->values();
+        $refundRows = $windowEvents->where('event_name', 'PurchaseCancelled')->values();
         $attributedPurchases = OpenAiAttribution::filterAttributed($purchaseRows);
         $attributedRefunds = OpenAiAttribution::attributedRefunds($purchaseRows, $refundRows);
 
@@ -36,25 +48,28 @@ class PerformanceController extends Controller
         $orderCount = $attributedPurchases->pluck('order_id')->filter()->unique()->count();
         $aov = $orderCount > 0 ? $netRevenue / $orderCount : 0;
 
-        $funnelCounts = (clone $base)
-            ->selectRaw('event_name, COUNT(*) as c')
-            ->groupBy('event_name')
-            ->pluck('c', 'event_name')
-            ->all();
+        // Funnel — attributed events only (matches page subtitle + revenue cards).
+        $funnelCounts = [];
+        foreach (array_keys(self::FUNNEL_STEPS) as $name) {
+            $funnelCounts[$name] = $attributed->where('event_name', $name)->count();
+        }
+        // Purchases: prefer distinct orders when order_id is present.
+        $purchasesCount = max(
+            $orderCount,
+            $attributedPurchases->count()
+        );
+        $funnelCounts['Purchase'] = $purchasesCount;
 
         $pageViews = (int) ($funnelCounts['PageView'] ?? 0);
         $viewContent = (int) ($funnelCounts['ViewContent'] ?? 0);
         $addToCart = (int) ($funnelCounts['AddToCart'] ?? 0);
         $checkouts = (int) ($funnelCounts['InitiateCheckout'] ?? 0);
-        // Attributed purchases only — matches revenue cards.
-        $purchasesCount = $attributedPurchases->count();
 
-        $cvr = $pageViews > 0 ? round($purchasesCount / $pageViews * 100, 2) : 0;
-        $atcRate = $viewContent > 0 ? round($addToCart / $viewContent * 100, 2) : 0;
-        $checkoutRate = $addToCart > 0 ? round($checkouts / $addToCart * 100, 2) : 0;
+        $cvr = $pageViews > 0 ? round($purchasesCount / $pageViews * 100, 2) : 0.0;
+        $atcRate = $viewContent > 0 ? round($addToCart / $viewContent * 100, 2) : 0.0;
+        $checkoutRate = $addToCart > 0 ? round($checkouts / $addToCart * 100, 2) : 0.0;
 
-        // Event Match Quality (EMQ) proxy — phone-first for India.
-        // Score attributed purchases (what OpenAI Ads can match).
+        // EMQ — attributed purchases only.
         $withOppref = 0;
         $withUser = 0;
         $withPhone = 0;
@@ -86,7 +101,7 @@ class PerformanceController extends Controller
                 $prepaidOrders++;
             }
         }
-        // EMQ score weights phone higher (India OTP/WhatsApp checkouts).
+
         $emqScore = 0.0;
         if ($purchasesCount > 0) {
             $emqScore = round((
@@ -106,31 +121,29 @@ class PerformanceController extends Controller
             ->count();
         $cancelCount = $attributedRefunds->count();
 
-        // ChatGPT / OpenAI traffic proxy via UTM + oppref on browser events.
-        $browserEvents = (clone $base)->where('source', 'browser')->get(['payload', 'event_name']);
-        $chatgptSessions = 0;
+        // ChatGPT sessions = attributed browser events (not unique visitors —
+        // we don't have a stable session key beyond vid in payload).
+        $chatgptSessions = $attributed->where('source', 'browser')->count();
         $utmCampaigns = [];
-        foreach ($browserEvents as $ev) {
-            if (! OpenAiAttribution::isAttributed($ev->payload ?? [])) {
-                continue;
-            }
+        foreach ($attributed as $ev) {
             $p = $ev->payload ?? [];
-            $chatgptSessions++;
             $campaign = $p['utm_campaign']
-                ?? ($p['user_data']['utm_campaign'] ?? null)
-                ?? 'uncategorized';
-            $utmCampaigns[$campaign] = ($utmCampaigns[$campaign] ?? 0) + 1;
+                ?? ($p['user_data']['utm_campaign'] ?? null);
+            if ($campaign) {
+                $utmCampaigns[$campaign] = ($utmCampaigns[$campaign] ?? 0) + 1;
+            }
         }
         arsort($utmCampaigns);
         $utmCampaigns = array_slice($utmCampaigns, 0, 8, true);
 
-        // Delivery health — last 24h source mix.
+        // Delivery health — last 24h (all events; operational, not attribution).
         $lastDay = $shop->events()->where('occurred_at', '>=', now()->subDay());
         $browser24 = (clone $lastDay)->where('source', 'browser')->count();
         $server24 = (clone $lastDay)->where('source', 'server')->count();
         $total24 = $browser24 + $server24;
 
-        // Daily attributed revenue chart (14 days).
+        // Daily attributed revenue chart — matches selected window (capped 30 bars).
+        $chartDays = min($days, 30);
         $dailyBuckets = [];
         foreach ($attributedPurchases as $row) {
             $date = optional($row->occurred_at)->toDateString();
@@ -145,7 +158,7 @@ class PerformanceController extends Controller
         }
 
         $chart = [];
-        for ($i = 13; $i >= 0; $i--) {
+        for ($i = $chartDays - 1; $i >= 0; $i--) {
             $date = now()->subDays($i)->toDateString();
             $row = $dailyBuckets[$date] ?? null;
             $chart[] = [
@@ -155,7 +168,6 @@ class PerformanceController extends Controller
             ];
         }
 
-        // Top products by revenue (attributed purchases only).
         $topProducts = [];
         foreach ($attributedPurchases as $row) {
             foreach ($row->payload['products'] ?? [] as $product) {
@@ -177,42 +189,53 @@ class PerformanceController extends Controller
             ->take(10)
             ->values();
 
+        // Store-wide totals (for honest empty-state copy when ads traffic is 0).
+        $storePageViews = $windowEvents->where('event_name', 'PageView')->count();
+        $storePurchases = $purchaseRows->pluck('order_id')->filter()->unique()->count();
+        if ($storePurchases === 0) {
+            $storePurchases = $purchaseRows->count();
+        }
+
         return view('performance', [
             'shop'  => $shop,
             'days'  => $days,
             'stats' => [
-                'net_revenue'      => $netRevenue,
-                'revenue'          => $revenue,
-                'refunds'          => $refunds,
-                'orders'           => $orderCount,
-                'aov'              => $aov,
-                'cvr'              => $cvr,
-                'atc_rate'         => $atcRate,
-                'checkout_rate'    => $checkoutRate,
-                'match_rate'       => $matchRate,
-                'emq_score'        => $emqScore,
-                'with_oppref'      => $withOppref,
-                'with_phone'       => $withPhone,
-                'with_email'       => $withEmail,
-                'with_user'        => $withUser,
-                'cod_orders'       => $codOrders,
-                'prepaid_orders'   => $prepaidOrders,
-                'rto_count'        => $rtoCount,
-                'cancel_count'     => $cancelCount,
-                'page_views'       => $pageViews,
-                'view_content'     => $viewContent,
-                'add_to_cart'      => $addToCart,
-                'checkouts'        => $checkouts,
-                'purchases'        => $purchasesCount,
-                'chatgpt_sessions' => $chatgptSessions,
-                'utm_campaigns'    => $utmCampaigns,
-                'browser_24h'      => $browser24,
-                'server_24h'       => $server24,
-                'total_24h'        => $total24,
-                'chart'            => $chart,
-                'top_products'     => $topProducts,
-                'recent_purchases' => $recentPurchases,
-                'tracking_active'  => $shop->webPixelActive() && $shop->capiReady(),
+                'net_revenue'       => $netRevenue,
+                'revenue'           => $revenue,
+                'refunds'           => $refunds,
+                'orders'            => $orderCount,
+                'aov'               => $aov,
+                'cvr'               => $cvr,
+                'atc_rate'          => $atcRate,
+                'checkout_rate'     => $checkoutRate,
+                'match_rate'        => $matchRate,
+                'emq_score'         => $emqScore,
+                'with_oppref'       => $withOppref,
+                'with_phone'        => $withPhone,
+                'with_email'        => $withEmail,
+                'with_user'         => $withUser,
+                'cod_orders'        => $codOrders,
+                'prepaid_orders'    => $prepaidOrders,
+                'rto_count'         => $rtoCount,
+                'cancel_count'      => $cancelCount,
+                'page_views'        => $pageViews,
+                'view_content'      => $viewContent,
+                'add_to_cart'       => $addToCart,
+                'checkouts'         => $checkouts,
+                'purchases'         => $purchasesCount,
+                'chatgpt_sessions'  => $chatgptSessions,
+                'utm_campaigns'     => $utmCampaigns,
+                'browser_24h'       => $browser24,
+                'server_24h'        => $server24,
+                'total_24h'         => $total24,
+                'chart'             => $chart,
+                'chart_days'        => $chartDays,
+                'top_products'      => $topProducts,
+                'recent_purchases'  => $recentPurchases,
+                'tracking_active'   => $shop->webPixelActive() && $shop->capiReady(),
+                'store_page_views'  => $storePageViews,
+                'store_purchases'   => $storePurchases,
+                'has_ads_traffic'   => $attributed->isNotEmpty(),
             ],
         ]);
     }

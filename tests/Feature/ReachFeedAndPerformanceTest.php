@@ -326,12 +326,21 @@ class ReachFeedAndPerformanceTest extends TestCase
             'payload'     => ['utm_source' => 'chatgpt', 'utm_campaign' => 'spring'],
             'occurred_at' => now()->subDay(),
         ]);
+        // Organic page view — must not appear in Performance funnel counts.
+        Event::create([
+            'shop_id'     => $this->shop->id,
+            'event_name'  => 'PageView',
+            'event_id'    => 'pv-organic',
+            'source'      => 'browser',
+            'payload'     => [],
+            'occurred_at' => now()->subDay(),
+        ]);
         Event::create([
             'shop_id'     => $this->shop->id,
             'event_name'  => 'ViewContent',
             'event_id'    => 'vc-1',
             'source'      => 'browser',
-            'payload'     => [],
+            'payload'     => ['utm_source' => 'chatgpt'],
             'occurred_at' => now()->subDay(),
         ]);
         Event::create([
@@ -339,7 +348,7 @@ class ReachFeedAndPerformanceTest extends TestCase
             'event_name'  => 'AddToCart',
             'event_id'    => 'atc-1',
             'source'      => 'browser',
-            'payload'     => [],
+            'payload'     => ['oppref' => 'opp-abc'],
             'occurred_at' => now()->subHours(12),
         ]);
         Event::create([
@@ -383,11 +392,19 @@ class ReachFeedAndPerformanceTest extends TestCase
             ->assertSee('Silk Saree')
             ->assertSee('#1001')
             ->assertSee('spring')
+            ->assertSee('OpenAI Ads traffic only', false)
             ->getContent();
 
         $this->assertStringNotContainsString('50,000', $html);
         $this->assertStringNotContainsString('Organic Only SKU', $html);
         $this->assertStringNotContainsString('#9999', $html);
+
+        // Funnel page-view count is attributed (1), not store-wide (2).
+        // Look for the funnel row structure rather than bare "1" which is noisy.
+        $this->assertMatchesRegularExpression(
+            '/Page views[\s\S]{0,400}?>1</',
+            $html
+        );
     }
 
     public function test_dashboard_revenue_excludes_organic_purchases(): void

@@ -19,6 +19,18 @@
         </div>
     </div>
 
+
+    @if (!($s['has_ads_traffic'] ?? false) && (($s['store_page_views'] ?? 0) > 0 || ($s['store_purchases'] ?? 0) > 0))
+        <div class="alert info mb-16">
+            Pixel is tracking store traffic
+            ({{ number_format((int) ($s['store_page_views'] ?? 0)) }} page views
+            · {{ number_format((int) ($s['store_purchases'] ?? 0)) }} store orders in this window),
+            but <strong>none carry OpenAI Ads attribution</strong> yet.
+            Add <span class="mono">utm_source=chatgpt</span> (or ensure <span class="mono">oppref</span> lands from Ads)
+            on ChatGPT landing URLs so Performance can separate ads from organic.
+        </div>
+    @endif
+
     @unless ($s['tracking_active'] ?? false)
         <div class="alert info mb-16">
             Tracking isn’t fully live yet — connect your Pixel ID + CAPI key and reconnect the Shopify pixel in
@@ -45,7 +57,7 @@
         <div class="stat">
             <div class="label">Conversion rate</div>
             <div class="value brand">{{ $s['cvr'] }}%</div>
-            <div class="delta">purchase / page view</div>
+            <div class="delta">attributed purchase / attributed page view</div>
         </div>
         <div class="stat">
             <div class="label">EMQ score</div>
@@ -53,9 +65,9 @@
             <div class="delta">phone-first · {{ $s['with_phone'] ?? 0 }} phone · {{ $s['with_oppref'] }} oppref</div>
         </div>
         <div class="stat">
-            <div class="label">ChatGPT sessions</div>
+            <div class="label">Attributed events</div>
             <div class="value">{{ number_format($s['chatgpt_sessions']) }}</div>
-            <div class="delta">oppref / utm chatgpt · openai · wa</div>
+            <div class="delta">browser events with oppref / ChatGPT UTM</div>
         </div>
     </div>
 
@@ -85,7 +97,7 @@
     <div class="grid cols-2 mb-16">
         <div class="card">
             <h3>Funnel efficiency</h3>
-            <p class="sub">Where shoppers drop off after a ChatGPT click.</p>
+            <p class="sub">OpenAI Ads traffic only (oppref / ChatGPT UTM) — not whole-store pixel volume.</p>
             <div class="perf-funnel">
                 @php
                     $steps = [
@@ -114,7 +126,7 @@
         </div>
 
         <div class="card">
-            <h3>Attributed revenue — last 14 days</h3>
+            <h3>Attributed revenue — last {{ $s['chart_days'] ?? $days }} days</h3>
             <p class="sub">OpenAI Ads purchases only (oppref / ChatGPT UTM).</p>
             <div class="chart rev-chart">
                 @php
