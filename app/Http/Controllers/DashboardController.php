@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\OpenAiAttribution;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
@@ -55,12 +56,20 @@ class DashboardController extends Controller
             $previous = $count;
         }
 
-        $revenue = (clone $base)->where('event_name', 'Purchase')->sum('value');
-        $refunds = (clone $base)->where('event_name', 'PurchaseCancelled')->sum('value');
+        // Revenue / orders: OpenAI Ads–attributed purchases only (oppref / UTM),
+        // not whole-store Shopify revenue from the pixel on every order.
+        $purchaseRows = (clone $base)->where('event_name', 'Purchase')
+            ->get(['id', 'order_id', 'value', 'payload']);
+        $refundRows = (clone $base)->where('event_name', 'PurchaseCancelled')
+            ->get(['id', 'order_id', 'value', 'payload']);
+        $attributedPurchases = OpenAiAttribution::filterAttributed($purchaseRows);
+        $attributedRefunds = OpenAiAttribution::attributedRefunds($purchaseRows, $refundRows);
+
+        $revenue = (float) $attributedPurchases->sum(fn ($e) => (float) ($e->value ?? 0));
+        $refunds = (float) $attributedRefunds->sum(fn ($e) => (float) ($e->value ?? 0));
         $netRevenue = $revenue - $refunds;
-        $refundCount = (clone $base)->where('event_name', 'PurchaseCancelled')->count();
-        $orders = (clone $base)->where('event_name', 'Purchase')
-            ->whereNotNull('order_id')->distinct()->count('order_id');
+        $refundCount = $attributedRefunds->count();
+        $orders = $attributedPurchases->pluck('order_id')->filter()->unique()->count();
         $todayCount = $shop->events()->where('occurred_at', '>=', now()->startOfDay())->count();
         $lastHour = $shop->events()->where('occurred_at', '>=', now()->subHour())->count();
         $maxEventId = (int) ($shop->events()->max('id') ?? 0);
@@ -125,16 +134,26 @@ class DashboardController extends Controller
     public function live(Request $request)
     {
         $shop = $request->attributes->get('shop');
+        $since = now()->subDays(30);
+
+        $purchaseRows = $shop->events()
+            ->where('occurred_at', '>=', $since)
+            ->where('event_name', 'Purchase')
+            ->get(['id', 'order_id', 'value', 'payload']);
+        $refundRows = $shop->events()
+            ->where('occurred_at', '>=', $since)
+            ->where('event_name', 'PurchaseCancelled')
+            ->get(['id', 'order_id', 'value', 'payload']);
+
+        $revenue = OpenAiAttribution::sumValue($purchaseRows);
+        $refunds = (float) OpenAiAttribution::attributedRefunds($purchaseRows, $refundRows)
+            ->sum(fn ($e) => (float) ($e->value ?? 0));
 
         return response()->json([
             'today'       => $shop->events()->where('occurred_at', '>=', now()->startOfDay())->count(),
             'last_hour'   => $shop->events()->where('occurred_at', '>=', now()->subHour())->count(),
             'month'       => $shop->monthly_event_count,
-            'net_revenue' => round(
-                (float) $shop->events()->where('event_name', 'Purchase')->sum('value')
-                - (float) $shop->events()->where('event_name', 'PurchaseCancelled')->sum('value'),
-                2
-            ),
+            'net_revenue' => round($revenue - $refunds, 2),
         ]);
     }
 
@@ -235,7 +254,7 @@ class DashboardController extends Controller
             ->get(['payload']);
 
         $aggregate = [];
-        foreach ($purchases as $purchase) {
+        foreach (OpenAiAttribution::filterAttributed($purchases) as $purchase) {
             foreach ($purchase->payload['products'] ?? [] as $product) {
                 $key = $product['title'] ?? ($product['id'] ?? 'Product');
                 $aggregate[$key] = ($aggregate[$key] ?? 0) + (int) ($product['quantity'] ?? 1);
@@ -248,18 +267,21 @@ class DashboardController extends Controller
     }
 
     /**
-     * Campaign attribution (Growth plan) — counts events by utm_campaign.
+     * Campaign attribution (Growth plan) — counts events by utm_campaign
+     * on OpenAI / ChatGPT traffic only.
      */
     protected function topCampaigns($shop, $since, int $limit): array
     {
         $events = $shop->events()
             ->where('occurred_at', '>=', $since)
-            ->whereIn('event_name', ['ViewContent', 'AddToCart', 'InitiateCheckout'])
+            ->whereIn('event_name', ['ViewContent', 'AddToCart', 'InitiateCheckout', 'Purchase'])
             ->get(['payload']);
 
         $aggregate = [];
-        foreach ($events as $event) {
-            $campaign = $event->payload['utm_campaign'] ?? null;
+        foreach (OpenAiAttribution::filterAttributed($events) as $event) {
+            $payload = $event->payload ?? [];
+            $campaign = $payload['utm_campaign']
+                ?? ($payload['user_data']['utm_campaign'] ?? null);
             if ($campaign) {
                 $aggregate[$campaign] = ($aggregate[$campaign] ?? 0) + 1;
             }

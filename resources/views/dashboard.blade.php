@@ -90,15 +90,15 @@
         <div class="stat">
             <div class="label">Net revenue from OpenAI Ads</div>
             <div class="value green" id="stat-net">₹{{ number_format((float) $stats['netRevenue'], 0) }}</div>
-            <div class="delta">gross ₹{{ number_format((float) $stats['revenue'], 0) }} · refunds ₹{{ number_format((float) $stats['refunds'], 0) }}</div>
+            <div class="delta">attributed only · gross ₹{{ number_format((float) $stats['revenue'], 0) }} · refunds ₹{{ number_format((float) $stats['refunds'], 0) }}</div>
         </div>
         <div class="stat">
             <div class="label">Orders attributed</div>
             <div class="value">{{ number_format($stats['orders']) }}</div>
-            <div class="delta">unique Shopify orders</div>
+            <div class="delta">with oppref / ChatGPT UTM</div>
         </div>
         <div class="stat">
-            <div class="label">Refunds</div>
+            <div class="label">Refunds (attributed)</div>
             <div class="value">{{ number_format($stats['refundCount']) }}</div>
             <div class="delta">₹{{ number_format((float) $stats['refunds'], 0) }} refunded</div>
         </div>
@@ -185,9 +185,9 @@
     <div class="grid cols-2 mb-16">
         <div class="card">
             <h3>Top products via OpenAI Ads</h3>
-            <p class="sub">By units purchased, last 30 days.</p>
+            <p class="sub">Attributed purchases only (oppref / ChatGPT UTM), last 30 days.</p>
             @if (empty($stats['topProducts']))
-                <p class="muted small">No purchases yet — connect your pixel and start driving ChatGPT Ads traffic.</p>
+                <p class="muted small">No attributed purchases yet — traffic needs <span class="mono">oppref</span> or <span class="mono">utm_source=chatgpt</span> on the landing URL.</p>
             @else
                 <table class="list">
                     @foreach ($stats['topProducts'] as $title => $qty)

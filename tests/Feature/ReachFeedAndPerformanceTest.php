@@ -358,16 +358,84 @@ class ReachFeedAndPerformanceTest extends TestCase
             ],
             'occurred_at' => now()->subHours(6),
         ]);
+        // Organic / whole-store purchase — must NOT inflate OpenAI Ads revenue.
+        Event::create([
+            'shop_id'     => $this->shop->id,
+            'event_name'  => 'Purchase',
+            'event_id'    => 'pur-organic',
+            'source'      => 'server',
+            'order_id'    => '9999',
+            'order_name'  => '#9999',
+            'value'       => 50000,
+            'currency'    => 'INR',
+            'payload'     => [
+                'products' => [['title' => 'Organic Only SKU', 'quantity' => 1, 'price' => 50000]],
+            ],
+            'occurred_at' => now()->subHours(3),
+        ]);
 
-        $this->actingAsShop()
+        $html = $this->actingAsShop()
             ->get('/performance?days=30')
             ->assertOk()
             ->assertSee('Performance')
-            ->assertSee('Net revenue')
+            ->assertSee('Net revenue from OpenAI Ads')
             ->assertSee('2,499')
             ->assertSee('Silk Saree')
             ->assertSee('#1001')
-            ->assertSee('spring');
+            ->assertSee('spring')
+            ->getContent();
+
+        $this->assertStringNotContainsString('50,000', $html);
+        $this->assertStringNotContainsString('Organic Only SKU', $html);
+        $this->assertStringNotContainsString('#9999', $html);
+    }
+
+    public function test_dashboard_revenue_excludes_organic_purchases(): void
+    {
+        Event::create([
+            'shop_id'     => $this->shop->id,
+            'event_name'  => 'Purchase',
+            'event_id'    => 'dash-attr',
+            'source'      => 'server',
+            'order_id'    => '2001',
+            'value'       => 1500,
+            'currency'    => 'INR',
+            'payload'     => [
+                'utm_source' => 'chatgpt',
+                'products'   => [['title' => 'Ads Kurta', 'quantity' => 1]],
+            ],
+            'occurred_at' => now()->subHour(),
+        ]);
+        Event::create([
+            'shop_id'     => $this->shop->id,
+            'event_name'  => 'Purchase',
+            'event_id'    => 'dash-organic',
+            'source'      => 'server',
+            'order_id'    => '2002',
+            'value'       => 22910,
+            'currency'    => 'INR',
+            'payload'     => [
+                'products' => [['title' => 'Storewide Sale', 'quantity' => 1]],
+            ],
+            'occurred_at' => now()->subMinutes(30),
+        ]);
+
+        $html = $this->actingAsShop()
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertSee('Net revenue from OpenAI Ads')
+            ->assertSee('1,500')
+            ->assertSee('Ads Kurta')
+            ->getContent();
+
+        // Whole-store ₹22,910 must not appear as OpenAI Ads revenue.
+        $this->assertStringNotContainsString('22,910', $html);
+        $this->assertStringNotContainsString('Storewide Sale', $html);
+
+        $this->actingAsShop()
+            ->getJson('/dashboard/live')
+            ->assertOk()
+            ->assertJsonPath('net_revenue', 1500);
     }
 
     public function test_nav_includes_performance_and_feed_links(): void

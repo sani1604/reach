@@ -28,14 +28,14 @@
 
     <div class="grid stats mb-16">
         <div class="stat">
-            <div class="label">Net revenue</div>
+            <div class="label">Net revenue from OpenAI Ads</div>
             <div class="value green">₹{{ number_format((float) $s['net_revenue'], 0) }}</div>
-            <div class="delta">gross ₹{{ number_format((float) $s['revenue'], 0) }} · refunds ₹{{ number_format((float) $s['refunds'], 0) }}</div>
+            <div class="delta">attributed only · gross ₹{{ number_format((float) $s['revenue'], 0) }} · refunds ₹{{ number_format((float) $s['refunds'], 0) }}</div>
         </div>
         <div class="stat">
-            <div class="label">Orders</div>
+            <div class="label">Orders attributed</div>
             <div class="value">{{ number_format($s['orders']) }}</div>
-            <div class="delta">unique Shopify purchases</div>
+            <div class="delta">with oppref / ChatGPT UTM</div>
         </div>
         <div class="stat">
             <div class="label">AOV</div>
@@ -114,8 +114,8 @@
         </div>
 
         <div class="card">
-            <h3>Revenue — last 14 days</h3>
-            <p class="sub">Purchase value by day (net of the window, not refunds).</p>
+            <h3>Attributed revenue — last 14 days</h3>
+            <p class="sub">OpenAI Ads purchases only (oppref / ChatGPT UTM).</p>
             <div class="chart rev-chart">
                 @php
                     $maxRev = max(1.0, (float) max(array_column($s['chart'] ?? [], 'revenue') ?: [0]));
@@ -131,7 +131,7 @@
                 @endforeach
             </div>
             @if ($maxRev <= 1 && collect($s['chart'] ?? [])->sum('revenue') <= 0)
-                <p class="muted small mt-16" style="margin-bottom:0;">No purchase revenue in this window yet — bars fill as orders land.</p>
+                <p class="muted small mt-16" style="margin-bottom:0;">No attributed purchase revenue in this window yet — bars fill when ChatGPT Ads orders land.</p>
             @endif
         </div>
     </div>
@@ -181,9 +181,9 @@
     <div class="grid cols-2 mb-16">
         <div class="card">
             <h3>Top products from OpenAI Ads</h3>
-            <p class="sub">By revenue in purchase payloads.</p>
+            <p class="sub">Attributed purchase revenue only.</p>
             @if (empty($s['top_products']))
-                <p class="muted small">No attributed product sales yet.</p>
+                <p class="muted small">No attributed product sales yet — needs oppref or utm_source=chatgpt on the order.</p>
             @else
                 <table class="list">
                     <thead><tr><th>Product</th><th>Units</th><th>Revenue</th></tr></thead>
@@ -201,8 +201,8 @@
         </div>
 
         <div class="card">
-            <h3>Recent purchases</h3>
-            <p class="sub">Latest Shopify orders tracked by Reach.</p>
+            <h3>Recent attributed purchases</h3>
+            <p class="sub">Latest OpenAI Ads–attributed Shopify orders.</p>
             <table class="list">
                 <thead><tr><th>Order</th><th>Value</th><th>When</th></tr></thead>
                 <tbody>
@@ -213,7 +213,7 @@
                             <td class="muted nowrap">{{ $p->occurred_at?->diffForHumans() }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="3" class="muted">No purchases yet.</td></tr>
+                        <tr><td colspan="3" class="muted">No attributed purchases yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
