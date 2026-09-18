@@ -10,9 +10,6 @@ namespace App\Services;
  *   dest => https://{shop}
  *   aud  => {API_KEY}
  *   exp / nbf / iat / jti / sid
- *
- * Multi-app: tries each configured Partner app secret/audience so the same
- * host can serve both Reach (private) and PixelAI (public).
  */
 class SessionToken
 {
@@ -25,13 +22,21 @@ class SessionToken
 
         [$headerB64, $payloadB64, $signatureB64] = $parts;
 
+        // Session tokens are always alg=HS256, signed with the app secret.
         $header = json_decode((string) $this->base64UrlDecode($headerB64), true);
         if (! is_array($header) || strtolower((string) ($header['alg'] ?? '')) !== 'hs256') {
             return null;
         }
 
         $signature = $this->base64UrlDecode($signatureB64);
-        if (! is_string($signature)) {
+        $expected = hash_hmac(
+            'sha256',
+            "{$headerB64}.{$payloadB64}",
+            (string) config('shopify.api_secret'),
+            true
+        );
+
+        if (! is_string($signature) || ! hash_equals($expected, $signature)) {
             return null;
         }
 
@@ -40,7 +45,18 @@ class SessionToken
             return null;
         }
 
+        // `aud` may be a string or an array of audiences.
+        $aud = $payload['aud'] ?? null;
+        $audOk = is_array($aud)
+            ? in_array(config('shopify.api_key'), $aud, true)
+            : $aud === config('shopify.api_key');
+        if (! $audOk) {
+            return null;
+        }
+
+        // Allow 2 minutes of leeway for clock skew between sandbox clocks.
         $leeway = 120;
+
         if (($payload['exp'] ?? 0) < time() - $leeway) {
             return null;
         }
@@ -48,38 +64,7 @@ class SessionToken
             return null;
         }
 
-        $aud = $payload['aud'] ?? null;
-        $audiences = is_array($aud) ? $aud : [$aud];
-
-        // Prefer the app already resolved for this request, then every configured app.
-        $keys = array_values(array_unique(array_filter([
-            ShopifyApp::key(),
-            ...ShopifyApp::configuredKeys(),
-        ])));
-
-        foreach ($keys as $appKey) {
-            $secret = ShopifyApp::apiSecret($appKey);
-            $apiKey = ShopifyApp::apiKey($appKey);
-            if (! $secret || ! $apiKey) {
-                continue;
-            }
-
-            $expected = hash_hmac('sha256', "{$headerB64}.{$payloadB64}", $secret, true);
-            if (! hash_equals($expected, $signature)) {
-                continue;
-            }
-
-            if (! in_array($apiKey, $audiences, true)) {
-                continue;
-            }
-
-            // Bind the matching app for the rest of the request.
-            ShopifyApp::setKey($appKey);
-
-            return $payload;
-        }
-
-        return null;
+        return $payload;
     }
 
     /**
@@ -94,7 +79,7 @@ class SessionToken
 
         $host = parse_url($origin, PHP_URL_HOST);
 
-        return $host ? ShopDomain::normalize(strtolower($host)) : null;
+        return $host ? strtolower($host) : null;
     }
 
     protected function base64UrlDecode(string $input): string|false

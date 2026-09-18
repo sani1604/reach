@@ -1,28 +1,35 @@
-# Reach — OpenAI Ads Pixel (PRIVATE / custom distribution)
+# Reach — OpenAI Ads Pixel for Shopify
 #
-# Partner app used for specific store installs.
-# Deploy with:
-#   shopify app config use shopify.app.reach-openai-ads-pixel.toml
-#   shopify app deploy
+# Shopify CLI / Dev Dashboard app configuration (2026).
+# Link + deploy with:
+#   shopify app config link     # one-time, binds client_id
+#   shopify app deploy          # pushes config + extensions
 #
-# Runtime env for this host:
-#   SHOPIFY_APP=reach
-#   SHOPIFY_API_KEY=…   SHOPIFY_API_SECRET=…
-#   SHOPIFY_APP_HANDLE=reach-openai-ads-pixel
+# NOTE: keep exactly ONE shopify.app.*.toml file in the repo root — multiple
+# config files make the CLI pick the wrong app or fail validation.
 
 client_id = "3d494905b0473e553ab710f85dbb99a8"
 name = "Reach — OpenAI Ads Pixel"
 
+# The application_url is loaded inside the admin iframe with ?shop=&host=
+# params. It must be the bare app root — sub-paths like /dashboard bypass
+# the embedded boot flow and can render "page doesn't exist" errors.
 application_url = "https://reach.whatify.in/"
 embedded = true
 
 [build]
+# Push URL changes from this file on deploy so the Dev Dashboard and the
+# app config never drift apart.
 automatically_update_urls_on_dev = true
-# Include the matching TOML when multiple configs exist.
-include_config_on_deploy = true
 
 [access_scopes]
-# webPixelCreate requires BOTH write_pixels AND read_customer_events.
+# webPixelCreate requires BOTH write_pixels AND read_customer_events
+# (Shopify returns Access denied without the second scope even when
+# write_pixels is present). After changing scopes, run:
+#   shopify app deploy
+# then open the app on the store so Shopify grants the updated permissions
+# (or uninstall + reinstall once). Existing offline tokens keep the OLD
+# scope list until the merchant re-approves.
 scopes = "read_orders,read_products,write_pixels,read_customer_events"
 use_legacy_install_flow = false
 
@@ -33,8 +40,11 @@ redirect_urls = [
 ]
 
 [webhooks]
+# Latest stable Admin API version (each version is supported for 12 months).
 api_version = "2026-07"
 
+# Commerce topics — delivered to the single HMAC-verified endpoint, which
+# routes on the X-Shopify-Topic header.
 [[webhooks.subscriptions]]
 topics = [
   "app/uninstalled",
@@ -48,6 +58,8 @@ topics = [
 ]
 uri = "/webhooks"
 
+# MANDATORY privacy-law compliance topics for public apps (GDPR / UK GDPR /
+# US state privacy laws). App Store review tests these on every submission.
 [[webhooks.subscriptions]]
 compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
 uri = "/webhooks"

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Loading {{ \App\Services\ShopifyApp::name() }}…</title>
+    <title>Loading Reach…</title>
     @if (config('shopify.api_key'))
         <meta name="shopify-api-key" content="{{ config('shopify.api_key') }}">
     @endif
@@ -17,7 +17,7 @@
     <div class="wrap">
         <div class="hero" style="padding-top: 96px; text-align:center;">
             <div class="brand" style="justify-content:center; margin-bottom:16px;">
-                <span class="logo">{{ \App\Services\ShopifyApp::mark() }}</span> {{ \App\Services\ShopifyApp::name() }}
+                <span class="logo">R</span> Reach
             </div>
             <p class="lede" id="boot-status">Loading your dashboard…</p>
         </div>

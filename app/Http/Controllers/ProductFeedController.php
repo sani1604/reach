@@ -114,7 +114,7 @@ class ProductFeedController extends Controller
         }
         RateLimiter::hit($rlKey, 60);
 
-        $row = Shop::findForApp($domain) ?: Shop::where('shopify_domain', $domain)->first();
+        $row = Shop::where('shopify_domain', $domain)->first();
 
         // Constant-time token compare to reduce timing leaks on the secret.
         if (

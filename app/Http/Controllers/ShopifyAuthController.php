@@ -6,7 +6,6 @@ use App\Jobs\PostInstallSetup;
 use App\Models\Shop;
 use App\Services\SessionToken;
 use App\Services\ShopDomain;
-use App\Services\ShopifyApp;
 use App\Services\ShopifyClient;
 use App\Services\ShopifyRequest;
 use App\Services\ShopifyWebhook;
@@ -63,7 +62,7 @@ class ShopifyAuthController extends Controller
             return response()->json(['ok' => false, 'reason' => 'invalid_token'], 401);
         }
 
-        $shop = Shop::findForApp($domain);
+        $shop = Shop::where('shopify_domain', $domain)->first();
 
         // Token exchange requires the app to be installed (Shopify managed
         // installation registers the app without calling us). A missing or
@@ -82,10 +81,13 @@ class ShopifyAuthController extends Controller
                 ], 200);
             }
 
-            $shop = Shop::upsertForApp($domain, array_merge($this->tokenAttributes($tokens), [
+            $shop = Shop::updateOrCreate(
+                ['shopify_domain' => $domain],
+                array_merge($this->tokenAttributes($tokens), [
                     'installed_at'   => $shop->installed_at ?? now(),
                     'uninstalled_at' => null,
-                ]));
+                ])
+            );
 
             $needsSetup = true;
         }
@@ -106,7 +108,7 @@ class ShopifyAuthController extends Controller
             }
         }
 
-        session(['shop' => $domain, 'shopify_app' => ShopifyApp::key()]);
+        session(['shop' => $domain]);
 
         return response()->json([
             'ok'           => true,
@@ -128,9 +130,9 @@ class ShopifyAuthController extends Controller
         }
 
         // Already installed: skip the consent screen entirely.
-        $shop = Shop::findForApp($domain);
+        $shop = Shop::where('shopify_domain', $domain)->first();
         if ($shop && $shop->isInstalled()) {
-            session(['shop' => $domain, 'shopify_app' => ShopifyApp::key()]);
+            session(['shop' => $domain]);
 
             return redirect()->route('dashboard', ['shop' => $domain]);
         }
@@ -177,12 +179,15 @@ class ShopifyAuthController extends Controller
             abort(500, 'Could not exchange OAuth code.');
         }
 
-        $shop = Shop::upsertForApp($domain, array_merge($this->tokenAttributes($tokens), [
+        $shop = Shop::updateOrCreate(
+            ['shopify_domain' => $domain],
+            array_merge($this->tokenAttributes($tokens), [
                 'installed_at'   => now(),
                 'uninstalled_at' => null,
-            ]));
+            ])
+        );
 
-        session(['shop' => $domain, 'shopify_app' => ShopifyApp::key()]);
+        session(['shop' => $domain]);
 
         // Activate the Customer Events web pixel right away so Shopify admin
         // does not show "Pixels: Disconnected" after install. Queue a retry
@@ -197,7 +202,7 @@ class ShopifyAuthController extends Controller
         // admin's "this page doesn't exist" screen.
         //
         // `host` is attacker-controllable base64 — only allow Shopify admin hosts.
-        $handle = ShopifyApp::handle();
+        $handle = config('shopify.app_handle');
         $safeHost = ShopDomain::safeAdminHostParam((string) $request->query('host', ''));
 
         $adminUrl = $safeHost
@@ -216,9 +221,9 @@ class ShopifyAuthController extends Controller
         $domain = $this->normalizeDomain($request->query('shop'));
 
         if ($domain) {
-            $shop = Shop::findForApp($domain);
+            $shop = Shop::where('shopify_domain', $domain)->first();
             if ($shop && $shop->isInstalled()) {
-                session(['shop' => $domain, 'shopify_app' => ShopifyApp::key()]);
+                session(['shop' => $domain]);
 
                 return redirect()->route('dashboard', ['shop' => $domain]);
             }
